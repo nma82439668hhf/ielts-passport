@@ -107,6 +107,39 @@
 
   let activeAudio = null;
   let activeUtterance = null;
+  const audioCache = new Map();
+
+  function wordAudioUrl(word) {
+    return `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(word)}&type=2`;
+  }
+
+  function preloadWord(word) {
+    const value = String(word || "").trim();
+    const key = value.toLowerCase();
+    if (!key) return null;
+    if (audioCache.has(key)) return audioCache.get(key);
+    const audio = new Audio(wordAudioUrl(value));
+    const entry = { audio, ready: false, error: false };
+    audio.preload = "auto";
+    audio.volume = 1;
+    audio.addEventListener("loadeddata", () => { entry.ready = true; });
+    audio.addEventListener("canplaythrough", () => { entry.ready = true; });
+    audio.addEventListener("error", () => { entry.error = true; });
+    audio.load();
+    audioCache.set(key, entry);
+    return entry;
+  }
+
+  function prefetchWords(words) {
+    const seen = new Set();
+    (words || []).forEach((word) => {
+      const value = String(word || "").trim();
+      const key = value.toLowerCase();
+      if (!value || seen.has(key)) return;
+      seen.add(key);
+      preloadWord(value);
+    });
+  }
 
   function stopSpeechAudio() {
     if (window.speechSynthesis) window.speechSynthesis.cancel();
@@ -162,22 +195,44 @@
       speakText(value, 0.78);
     };
 
-    // Youdao's public dictionary audio is reliable on desktop and mobile browsers.
-    const url = `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(value)}&type=2`;
-    const audio = new Audio(url);
+    const entry = preloadWord(value);
+    const audio = entry.audio;
     activeAudio = audio;
-    audio.preload = "auto";
-    audio.volume = 1;
     audio.addEventListener("ended", () => {
       unmark();
       if (activeAudio === audio) activeAudio = null;
-    });
-    audio.addEventListener("error", fallback);
-    const playPromise = audio.play();
-    if (playPromise && playPromise.catch) playPromise.catch(fallback);
+    }, { once: true });
+    audio.addEventListener("error", fallback, { once: true });
+
+    const playAudio = () => {
+      try {
+        audio.currentTime = 0;
+        const playPromise = audio.play();
+        if (playPromise && playPromise.catch) playPromise.catch(fallback);
+      } catch (e) {
+        fallback();
+      }
+    };
+
+    if (audio.readyState >= 3 || entry.ready) {
+      playAudio();
+      return;
+    }
+
+    let started = false;
+    const onReady = () => {
+      if (started) return;
+      started = true;
+      playAudio();
+    };
+    audio.addEventListener("loadeddata", onReady, { once: true });
+    audio.addEventListener("canplaythrough", onReady, { once: true });
     window.setTimeout(() => {
-      if (!usedFallback && audio.paused && audio.currentTime === 0) fallback();
-    }, 1400);
+      if (!started) {
+        started = true;
+        fallback();
+      }
+    }, 550);
   }
 
   function levelOrder(level) {
@@ -627,6 +682,7 @@
     if (!test) return `<div class="panel empty-state"><p>未找到该套词汇题</p></div>`;
     state.currentTest = { skill: "vocab", id, checked: false };
     state.answerMap = {};
+    prefetchWords((test.questions || []).slice(0, 12).map((q) => q.word));
     const group = { type: "multiple-choice", instructions: "选择正确答案。点击单词旁边的小喇叭可以听发音。", questions: test.questions || [] };
     return `
       <div class="runner-head reveal">
@@ -690,6 +746,12 @@
     }
     const idx = state.vocabDeck[Math.min(state.vocabIndex, state.vocabDeck.length - 1)];
     const card = vocab[idx];
+    const prefetchList = [];
+    for (let i = 0; i < Math.min(7, state.vocabDeck.length); i += 1) {
+      const next = vocab[state.vocabDeck[(state.vocabIndex + i) % state.vocabDeck.length]];
+      if (next) prefetchList.push(next.w);
+    }
+    prefetchWords(prefetchList);
     const total = state.vocabDeck.length;
     const pos = Math.min(state.vocabIndex + 1, total);
     const knownCount = state.progress.vocab.known.length;
@@ -1101,6 +1163,13 @@
 
   function bindEvents() {
     $("#view-root").addEventListener("click", handleAction);
+    const prefetchFromEvent = (e) => {
+      const el = e.target.closest && e.target.closest("[data-action=speak-word]");
+      if (el) preloadWord(el.dataset.word);
+    };
+    $("#view-root").addEventListener("pointerover", prefetchFromEvent);
+    $("#view-root").addEventListener("focusin", prefetchFromEvent);
+    $("#view-root").addEventListener("touchstart", prefetchFromEvent, { passive: true });
     $("#view-root").addEventListener("input", (e) => {
       if (e.target.matches("[data-writing-id]")) updateWordCount();
       if (e.target.matches("[data-qpath]")) updateLiveScore();
