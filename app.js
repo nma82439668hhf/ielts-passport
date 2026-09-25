@@ -11,6 +11,10 @@
     path: "学习地图",
     lesson: "学习模块",
     practice: "题库练习",
+    challenges: "题型挑战",
+    exam: "模拟考试",
+    videos: "精选视频",
+    session: "答题中",
     reading: "阅读练习",
     listening: "听力练习",
     writing: "写作练习",
@@ -43,6 +47,8 @@
       vocab: { seen: 0, known: [] },
       drafts: {},
       lastScore: {},
+      daily: { date: "", words: 0, questions: 0, minutes: 0, tests: 0, lastMilestone: 0, wordsSeen: [] },
+      player: { xp: 0, level: 1, estimatedBand: 3.5, bestBand: 0, mockScores: [] },
     };
   }
 
@@ -61,6 +67,9 @@
     speakingLevel: "A1",
     writingTaskIndex: 0,
     lookupEnabled: true,
+    challengeLevel: "A1",
+    examLevel: "A1",
+    session: null,
   };
 
   const dictionaryShardPromises = new Map();
@@ -73,7 +82,16 @@
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        return { ...defaultProgress(), ...parsed, stats: { ...defaultProgress().stats, ...(parsed.stats || {}) } };
+        const defaults = defaultProgress();
+        return {
+          ...defaults,
+          ...parsed,
+          streak: { ...defaults.streak, ...(parsed.streak || {}) },
+          stats: { ...defaults.stats, ...(parsed.stats || {}) },
+          vocab: { ...defaults.vocab, ...(parsed.vocab || {}) },
+          daily: { ...defaults.daily, ...(parsed.daily || {}) },
+          player: { ...defaults.player, ...(parsed.player || {}) },
+        };
       }
     } catch (e) {
       /* ignore corrupt storage */
@@ -413,7 +431,93 @@
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   }
 
+  function ensureToday() {
+    const key = todayKey();
+    if (state.progress.daily.date !== key) {
+      state.progress.daily = { date: key, words: 0, questions: 0, minutes: 0, tests: 0, lastMilestone: 0, wordsSeen: [] };
+      save();
+    }
+    return state.progress.daily;
+  }
+
+  function playerLevelFromXp(xp) {
+    const thresholds = [0, 120, 320, 650, 1100, 1800];
+    let level = 1;
+    thresholds.forEach((threshold, i) => {
+      if (xp >= threshold) level = i + 1;
+    });
+    return level;
+  }
+
+  function xpForLevel(level) {
+    return [0, 120, 320, 650, 1100, 1800][Math.max(0, Math.min(5, level - 1))] || 1800;
+  }
+
+  function levelBandLabel(level) {
+    return {
+      1: "入门 · Band 3.0–3.5",
+      2: "基础 · Band 4.0–4.5",
+      3: "进阶 · Band 5.0–5.5",
+      4: "稳过 · Band 6.0–6.5",
+      5: "熟练 · Band 7.0–7.5",
+      6: "高分 · Band 8.0+",
+    }[level] || "入门 · Band 3.0–3.5";
+  }
+
+  function addXp(amount) {
+    const player = state.progress.player;
+    player.xp = Math.max(0, (player.xp || 0) + Number(amount || 0));
+    player.level = playerLevelFromXp(player.xp);
+  }
+
+  function estimateBand() {
+    const stats = state.progress.stats;
+    const attempted = Object.values(stats).reduce((n, s) => n + (s.attempted || 0), 0);
+    const correct = Object.values(stats).reduce((n, s) => n + (s.correct || 0), 0);
+    const accuracy = attempted ? correct / attempted : 0;
+    const volume = Math.min(1, attempted / 300);
+    const raw = 3.0 + accuracy * 4.5 + volume * 0.8;
+    const rounded = Math.round(raw * 2) / 2;
+    return Math.max(3.0, Math.min(8.5, rounded));
+  }
+
+  function mockBandFromScore(score, level) {
+    const base = level === "A1" || level === "A2" ? 3.0 : level === "B1" || level === "B2" ? 4.0 : 4.5;
+    const span = level === "A1" || level === "A2" ? 3.5 : level === "B1" || level === "B2" ? 4.0 : 4.5;
+    return Math.max(3.0, Math.min(9.0, Math.round((base + (score / 100) * span) * 2) / 2));
+  }
+
+  function recordDailyWords(count) {
+    const daily = ensureToday();
+    daily.words += Number(count || 0);
+    addXp(5 * Number(count || 0));
+    if (daily.words >= 10 && daily.lastMilestone < 10) {
+      daily.lastMilestone = 10;
+      toast("今天已经学习 10 个单词，继续保持！");
+    }
+    if (daily.words >= 20 && daily.lastMilestone < 20) {
+      daily.lastMilestone = 20;
+      toast("今日 20 词目标完成！");
+    }
+    save();
+  }
+
+  function recordDailyQuestions(count) {
+    const daily = ensureToday();
+    daily.questions += Number(count || 0);
+    addXp(3 * Number(count || 0));
+    save();
+  }
+
+  function recordDailyTest() {
+    const daily = ensureToday();
+    daily.tests += 1;
+    addXp(25);
+    save();
+  }
+
   function touchToday() {
+    ensureToday();
     const key = todayKey();
     if (state.progress.streak.last !== key) {
       const yesterday = new Date();
@@ -476,6 +580,10 @@
       case "path": html = renderPath(); break;
       case "lesson": html = renderLesson(state.param); break;
       case "practice": html = renderPractice(); break;
+      case "challenges": html = renderChallenges(); break;
+      case "exam": html = renderExam(); break;
+      case "videos": html = renderVideos(); break;
+      case "session": html = renderSession(); break;
       case "reading": html = renderReadingTest(state.param); break;
       case "listening": html = renderListeningTest(state.param); break;
       case "writing": html = renderWritingTest(state.param); break;
@@ -504,14 +612,21 @@
     const totalAttempted = Object.values(stats).reduce((n, s) => n + (s.attempted || 0), 0);
     const totalCorrect = Object.values(stats).reduce((n, s) => n + (s.correct || 0), 0);
     const accuracy = totalAttempted ? Math.round((totalCorrect / totalAttempted) * 100) : 0;
-    const known = state.progress.vocab.known.length;
+    const daily = ensureToday();
+    const dailyGoal = 20;
+    const dailyPct = Math.min(100, Math.round((daily.words / dailyGoal) * 100));
+    const player = state.progress.player;
+    player.estimatedBand = estimateBand();
+    const currentLevelXp = xpForLevel(player.level);
+    const nextLevelXp = xpForLevel(player.level + 1);
+    const levelPct = nextLevelXp === currentLevelXp ? 100 : Math.min(100, Math.round(((player.xp - currentLevelXp) / (nextLevelXp - currentLevelXp)) * 100));
     const target = state.progress.target;
 
     const tasks = [
-      { view: "vocab", icon: "notebook-tabs", color: "gold", title: "背 10 个高频词", desc: "词汇卡片 · 约 5 分钟" },
-      { view: "path", icon: "map", color: "teal", title: "完成一个学习模块", desc: "今天推荐：听力技巧" },
-      { view: "practice", icon: "book-open-check", color: "red", title: "做一套阅读题", desc: "题库 · 约 20 分钟" },
-      { view: "speaking", icon: "mic-2", color: "teal", title: "开口练一个口语题", desc: "口语题库 · 约 10 分钟" },
+      { view: "vocab", icon: "notebook-tabs", color: "gold", title: "背 20 个分级词", desc: `今天已学 ${daily.words} 个 · 约 8 分钟` },
+      { view: "practice", icon: "book-open-check", color: "red", title: "做一套分级练习", desc: "按你的当前阶段选择题目" },
+      { view: "challenges", icon: "trophy", color: "teal", title: "完成一个题型挑战", desc: "单词、听力、阅读或混合挑战" },
+      { view: "exam", icon: "clipboard-check", color: "gold", title: "参加一次模拟考试", desc: "自动换算雅思预测分" },
     ];
 
     const skillRows = ["listening", "reading", "writing", "speaking"]
@@ -527,19 +642,19 @@
 
     return `
       <div class="hero-band reveal">
-        <span class="eyebrow">${esc(String(target).replace(/\.5$/, ".5"))} BAND TARGET · BEGINNER PATH</span>
+        <span class="eyebrow">Lv.${player.level} · 预测 Band ${player.estimatedBand.toFixed(1)} · TARGET ${target.toFixed(1)}</span>
         <h2>今天，为你的雅思上岸前进一小步。</h2>
-        <p>按自己的节奏学习。先补基础词汇和语法，再用真实题型训练听力、阅读、写作和口语。</p>
+        <p>今天已经学习 ${daily.words} 个单词、完成 ${daily.questions} 道题。先补基础词汇和语法，再用分级题库和模拟考试提升分数。</p>
         <div class="hero-actions">
-          <button class="btn" data-action="go" data-view="path"><i data-lucide="map"></i>开始学习地图</button>
-          <button class="btn ghost-on-dark" data-action="go" data-view="practice" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.45)"><i data-lucide="book-open-check"></i>直接刷题</button>
+          <button class="btn" data-action="go" data-view="exam"><i data-lucide="clipboard-check"></i>模拟考试</button>
+          <button class="btn ghost-on-dark" data-action="go" data-view="challenges" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.45)"><i data-lucide="trophy"></i>题型挑战</button>
         </div>
       </div>
 
       <div class="stat-grid">
+        <div class="stat-card reveal"><div class="stat-top"><span>今日单词</span><i data-lucide="notebook-tabs"></i></div><strong>${daily.words}</strong><div class="stat-note">目标 ${dailyGoal} 词 · ${dailyPct}%</div></div>
         <div class="stat-card reveal"><div class="stat-top"><span>累计做题</span><i data-lucide="list-checks"></i></div><strong>${totalAttempted}</strong><div class="stat-note">道题</div></div>
         <div class="stat-card reveal"><div class="stat-top"><span>正确率</span><i data-lucide="target"></i></div><strong>${accuracy}%</strong><div class="stat-note">${totalCorrect} / ${totalAttempted}</div></div>
-        <div class="stat-card reveal"><div class="stat-top"><span>已记词汇</span><i data-lucide="sparkles"></i></div><strong>${known}</strong><div class="stat-note">个单词</div></div>
         <div class="stat-card reveal"><div class="stat-top"><span>连续学习</span><i data-lucide="flame"></i></div><strong>${state.progress.streak.count}</strong><div class="stat-note">天</div></div>
       </div>
 
@@ -557,10 +672,15 @@
         </section>
 
         <section class="panel skill-progress reveal">
-          <h3>四科进度</h3>
+          <h3>玩家等级与四科进度</h3>
+          <div class="player-line">
+            <div class="player-level">Lv.${player.level}</div>
+            <div class="player-copy"><strong>${levelBandLabel(player.level)}</strong><span>XP ${player.xp} / ${nextLevelXp === currentLevelXp ? "MAX" : nextLevelXp}</span></div>
+          </div>
+          <div class="bar gold" style="margin-bottom:16px"><span style="width:${levelPct}%"></span></div>
           ${skillRows}
           <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line)">
-            <div class="progress-label"><span>目标分数</span><span style="color:var(--red-deep)">Band ${state.progress.target.toFixed(1)}</span></div>
+            <div class="progress-label"><span>目标分数</span><span style="color:var(--red-deep)">Band ${target.toFixed(1)}</span></div>
             <div class="bar red"><span style="width:${Math.min(100, Math.round((target / 9) * 100))}%"></span></div>
           </div>
         </section>
@@ -664,6 +784,256 @@
             ? (BANK.vocabQuiz || [])
             : [];
     return (list || []).find((t) => t.id === id);
+  }
+
+  const SESSION_TYPES = new Set(["multiple-choice", "true-false", "yes-no", "short-answer"]);
+
+  function collectSessionQuestions(test, skill, level) {
+    const out = [];
+    if (!test) return out;
+    if (Array.isArray(test.questions)) {
+      test.questions.forEach((q) => {
+        if (SESSION_TYPES.has(q.type)) out.push({ ...q, skill, level: test.level || level, context: "" });
+      });
+    }
+    (test.passages || []).forEach((p) => {
+      (p.groups || []).forEach((g) => {
+        (g.questions || []).forEach((q) => {
+          if (SESSION_TYPES.has(q.type)) out.push({ ...q, skill: skill || "reading", level: test.level || level, context: p.content || "" });
+        });
+      });
+    });
+    (test.sections || []).forEach((s) => {
+      (s.groups || []).forEach((g) => {
+        (g.questions || []).forEach((q) => {
+          if (SESSION_TYPES.has(q.type)) out.push({ ...q, skill: skill || "listening", level: test.level || level, context: s.transcript || "" });
+        });
+      });
+    });
+    return out;
+  }
+
+  function getLevelQuestionPool(level, skill) {
+    const staged = BANK.staged || {};
+    if (skill === "vocab") {
+      const quizLevel = level === "IELTS" ? "C1" : level;
+      return (BANK.vocabQuiz || [])
+        .filter((t) => t.level === quizLevel)
+        .flatMap((t) => collectSessionQuestions(t, "vocab", level));
+    }
+    if (skill === "reading") {
+      const list = level === "IELTS"
+        ? withLevel(BANK.reading, "IELTS")
+        : withLevel((staged.reading || []).filter((t) => t.level === level), level);
+      return list.flatMap((t) => collectSessionQuestions(t, "reading", level));
+    }
+    if (skill === "listening") {
+      const list = level === "IELTS"
+        ? withLevel(BANK.listening, "IELTS")
+        : withLevel((staged.listening || []).filter((t) => t.level === level), level);
+      return list.flatMap((t) => collectSessionQuestions(t, "listening", level));
+    }
+    return [];
+  }
+
+  function buildChallengeQuestions(type, level) {
+    let pool = [];
+    if (type === "vocab") pool = getLevelQuestionPool(level, "vocab");
+    if (type === "reading") pool = getLevelQuestionPool(level, "reading");
+    if (type === "listening") pool = getLevelQuestionPool(level, "listening");
+    if (type === "mixed") pool = getLevelQuestionPool(level, "vocab").concat(getLevelQuestionPool(level, "reading"), getLevelQuestionPool(level, "listening"));
+    return shuffle(pool).slice(0, type === "vocab" ? 20 : 10);
+  }
+
+  function buildMockQuestions(level) {
+    const vocabLevel = level === "IELTS" ? "IELTS" : level;
+    const vocabPool = shuffle(getLevelQuestionPool(vocabLevel, "vocab"));
+    const reading = shuffle(getLevelQuestionPool(level, "reading")).slice(0, 6);
+    const listening = shuffle(getLevelQuestionPool(level, "listening")).slice(0, 6);
+    const remaining = Math.max(0, 20 - reading.length - listening.length);
+    const vocab = vocabPool.slice(0, remaining);
+    return shuffle(vocab.concat(reading, listening)).slice(0, 20);
+  }
+
+  function stopSessionTimer() {
+    if (state.session && state.session.timerId) {
+      clearInterval(state.session.timerId);
+      state.session.timerId = null;
+    }
+  }
+
+  function formatClock(seconds) {
+    const safe = Math.max(0, Number(seconds || 0));
+    return `${String(Math.floor(safe / 60)).padStart(2, "0")}:${String(safe % 60).padStart(2, "0")}`;
+  }
+
+  function startSessionTimer() {
+    stopSessionTimer();
+    if (!state.session || state.session.result) return;
+    state.session.timerId = setInterval(() => {
+      if (!state.session || state.session.result) return;
+      state.session.remaining -= 1;
+      const el = $("#session-timer");
+      if (el) el.textContent = formatClock(state.session.remaining);
+      if (state.session.remaining <= 0) submitSession();
+    }, 1000);
+  }
+
+  function startSession(kind, type, level) {
+    const questions = kind === "mock" ? buildMockQuestions(level) : buildChallengeQuestions(type, level);
+    if (!questions.length) {
+      toast("这个阶段暂时没有足够的自动判分题");
+      return;
+    }
+    state.answerMap = {};
+    state.currentTest = null;
+    state.session = {
+      kind,
+      type,
+      level,
+      questions,
+      remaining: kind === "mock" ? 30 * 60 : 10 * 60,
+      result: null,
+      timerId: null,
+    };
+    setView("session");
+    startSessionTimer();
+  }
+
+  function submitSession() {
+    const session = state.session;
+    if (!session || session.result) return;
+    stopSessionTimer();
+    const statSkill = session.type === "listening" ? "listening" : session.type === "reading" ? "reading" : "vocab";
+    state.currentTest = { skill: session.kind, id: `${session.kind}:${session.type}:${session.level}`, checked: false, statSkill };
+    const result = checkAnswers();
+    if (!result) return;
+    const band = session.kind === "mock" ? mockBandFromScore(result.score, session.level) : 0;
+    const xp = result.correct * 10 + 15;
+    if (session.kind === "mock") {
+      state.progress.player.bestBand = Math.max(state.progress.player.bestBand || 0, band);
+      state.progress.player.mockScores = (state.progress.player.mockScores || []).concat({ level: session.level, score: result.score, band, date: todayKey() }).slice(-20);
+      state.progress.player.estimatedBand = band;
+    } else {
+      state.progress.lastScore[`challenge:${session.type}:${session.level}`] = result.score;
+      state.progress.player.estimatedBand = estimateBand();
+    }
+    state.session.result = { correct: result.correct, total: result.total, score: result.score, band, xp };
+    save();
+    render();
+  }
+
+  function renderChallenges() {
+    const level = state.challengeLevel;
+    const challenges = [
+      { type: "vocab", title: "单词闪电战", en: "Vocabulary sprint", icon: "zap", color: "gold", desc: "20 道分级词汇题，训练释义和词形反应速度。" },
+      { type: "listening", title: "听力挑战", en: "Listening challenge", icon: "headphones", color: "teal", desc: "10 道听力理解题，可点击题目旁喇叭发音。" },
+      { type: "reading", title: "阅读挑战", en: "Reading challenge", icon: "book-open", color: "red", desc: "10 道阅读题，包含原文材料和题型训练。" },
+      { type: "mixed", title: "混合挑战", en: "Mixed challenge", icon: "shuffle", color: "teal", desc: "词汇、阅读、听力混合 10 题，检验综合水平。" },
+    ];
+    return `
+      <div class="section-head reveal">
+        <div><h2>题型挑战</h2><p>选一个阶段和挑战类型，限时答题并记录成绩。</p></div>
+      </div>
+      <div class="filter-bar reveal" style="margin-bottom:16px">
+        <span style="font-size:12px;color:var(--muted)">阶段</span>
+        <div class="seg">${["A1", "A2", "B1", "B2", "C1", "IELTS"].map((l) => `<button data-action="set-challenge-level" data-level="${l}" class="${l === level ? "is-active" : ""}">${l}</button>`).join("")}</div>
+      </div>
+      <div class="module-grid">
+        ${challenges.map((c) => {
+          const best = state.progress.lastScore[`challenge:${c.type}:${level}`];
+          return `<article class="module-card ${c.color} reveal" data-action="start-challenge" data-type="${c.type}" data-level="${level}">
+            <div class="module-top"><span class="module-num">${c.type === "vocab" ? "20" : "10"} 题</span><span class="tag ${c.color}">${best !== undefined ? `最高 ${best}%` : "未挑战"}</span></div>
+            <h3>${esc(c.title)}</h3><div class="module-en">${esc(c.en)}</div><p>${esc(c.desc)}</p>
+          </article>`;
+        }).join("")}
+      </div>`;
+  }
+
+  function renderExam() {
+    const level = state.examLevel;
+    const player = state.progress.player;
+    player.estimatedBand = estimateBand();
+    const best = player.bestBand || 0;
+    return `
+      <div class="section-head reveal">
+        <div><h2>模拟雅思考试</h2><p>从当前阶段自动抽 20 道可判分题，完成后换算预测雅思分。</p></div>
+        <div class="tag gold">历史最高 Band ${best ? best.toFixed(1) : "—"}</div>
+      </div>
+      <div class="exam-hero panel reveal">
+        <div>
+          <span class="eyebrow">PLAYER LEVEL ${player.level} · XP ${player.xp}</span>
+          <h3>当前预测：Band ${player.estimatedBand.toFixed(1)}</h3>
+          <p>${levelBandLabel(player.level)}。模拟考试会根据正确率、题目阶段和历史表现更新预测分数。</p>
+        </div>
+        <div class="score-orb"><strong>${player.estimatedBand.toFixed(1)}</strong><span>预测分</span></div>
+      </div>
+      <div class="filter-bar reveal" style="margin:18px 0 16px">
+        <span style="font-size:12px;color:var(--muted)">考试阶段</span>
+        <div class="seg">${["A1", "A2", "B1", "B2", "C1", "IELTS"].map((l) => `<button data-action="set-exam-level" data-level="${l}" class="${l === level ? "is-active" : ""}">${l}</button>`).join("")}</div>
+      </div>
+      <div class="panel exam-start reveal">
+        <div class="exam-start-icon"><i data-lucide="clipboard-check"></i></div>
+        <div class="exam-start-copy"><h3>${level} 模拟考试</h3><p>20 题 · 30 分钟 · 自动判分并换算 Band 分。</p></div>
+        <button class="btn primary" data-action="start-mock" data-level="${level}"><i data-lucide="play"></i>开始考试</button>
+      </div>
+      ${(player.mockScores || []).length ? `<div class="panel panel-pad reveal" style="margin-top:16px"><h3 style="margin-top:0">最近模拟成绩</h3>${player.mockScores.slice(-5).reverse().map((m) => `<div class="progress-label"><span>${esc(m.level)} · ${esc(m.date)}</span><span>${m.score}% · Band ${m.band.toFixed(1)}</span></div>`).join("")}</div>` : ""}`;
+  }
+
+  function renderSession() {
+    const session = state.session;
+    if (!session) return `<div class="panel empty-state"><p>请先选择挑战或模拟考试。</p></div>`;
+    if (session.result) {
+      const r = session.result;
+      return `
+        <div class="exam-result panel reveal">
+          <div class="score-orb large"><strong>${r.score}%</strong><span>正确率</span></div>
+          <h2>${r.band ? `预测 Band ${r.band.toFixed(1)}` : "挑战完成"}</h2>
+          <p>答对 ${r.correct} / ${r.total} 题，获得 ${r.xp} XP。${r.band ? "当前预测分已更新。" : "继续挑战可以提升熟练度。"}</p>
+          <div class="hero-actions">
+            <button class="btn primary" data-action="retry-session"><i data-lucide="rotate-ccw"></i>再来一次</button>
+            <button class="btn ghost" data-action="go" data-view="${session.kind === "mock" ? "exam" : "challenges"}"><i data-lucide="arrow-left"></i>返回</button>
+          </div>
+        </div>`;
+    }
+    const title = session.kind === "mock" ? `${session.level} 模拟考试` : `题型挑战 · ${session.type}`;
+    return `
+      <div class="runner-head reveal">
+        <div><h2>${esc(title)}</h2><div class="runner-meta"><span class="tag gold">${session.level}</span><span class="tag">${session.questions.length} 题</span><span class="tag" id="session-timer">${formatClock(session.remaining)}</span></div></div>
+        <button class="btn ghost" data-action="exit-session"><i data-lucide="x"></i>退出</button>
+      </div>
+      <section class="panel questions-panel reveal">
+        <div class="session-progress" id="session-progress">已答 <strong>0</strong> / ${session.questions.length} 题</div>
+        ${session.questions.map((q, i) => {
+          const context = q.context ? `<details class="session-context"><summary>查看材料</summary><div>${wordify(q.context)}</div></details>` : "";
+          return `<div class="session-item">${context}${renderQuestionGroup({ type: q.type, instructions: "", questions: [q] }, i, 0, q.context, q.level)}</div>`;
+        }).join("")}
+        <div class="check-row">
+          <div class="score-big">考试结束后统一判分</div>
+          <button class="btn primary" data-action="submit-session"><i data-lucide="check-check"></i>提交并计算分数</button>
+        </div>
+      </section>`;
+  }
+
+  function renderVideos() {
+    const videos = [
+      { bvid: "BV1P44y157Kw", title: "雅思小白如何入门", tag: "入门", desc: "先了解雅思考试结构和基础备考路线。" },
+      { bvid: "BV1i8411X7Et", title: "雅思听力从 0 到精通", tag: "听力", desc: "适合初学者的听力基础训练。" },
+      { bvid: "BV1GV4y1F7UG", title: "阅读听力满分选手经验", tag: "阅读", desc: "题型介绍和基础备考经验。" },
+      { bvid: "BV1gW3szPE8Z", title: "雅思听力基础课程", tag: "听力", desc: "纯干货听力基础课，适合配合分级听力练习。" },
+      { bvid: "BV1ksgkzaEA5", title: "Keith 雅思口语零基础课程", tag: "口语", desc: "中英字幕口语课程，练习发音和表达。" },
+      { bvid: "BV18K411p712", title: "雅思入门和备考方法", tag: "方法", desc: "了解新手最容易走弯路的备考方式。" },
+    ];
+    return `
+      <div class="section-head reveal">
+        <div><h2>精选国内视频</h2><p>来自哔哩哔哩的公开视频，使用官方播放器内嵌；视频版权归原作者所有。</p></div>
+      </div>
+      <div class="video-grid">
+        ${videos.map((v) => `<article class="video-card reveal">
+          <div class="video-frame"><iframe src="https://player.bilibili.com/player.html?bvid=${v.bvid}&page=1&high_quality=1&danmaku=0&autoplay=0" loading="lazy" allowfullscreen="true" scrolling="no" frameborder="0"></iframe></div>
+          <div class="video-body"><span class="tag red">${esc(v.tag)}</span><h3>${esc(v.title)}</h3><p>${esc(v.desc)}</p><a href="https://www.bilibili.com/video/${v.bvid}/" target="_blank" rel="noopener">打开 B 站观看</a></div>
+        </article>`).join("")}
+      </div>`;
   }
 
   function renderReadingTest(id) {
@@ -977,6 +1347,8 @@
 
   function renderAbout() {
     const sources = BANK.sources || {};
+    const meta = BANK.vocabMeta || {};
+    const updatedAt = meta.updatedAt ? new Date(meta.updatedAt).toLocaleDateString("zh-CN") : "未知";
     return `
       <div class="panel about-card reveal">
         <h2>题库来源与许可</h2>
@@ -992,8 +1364,51 @@
             <tr><td>中英释义</td><td><code>skywind3000/ECDICT</code></td><td>MIT</td></tr>
           </tbody>
         </table>
+        <div class="vocab-update-box">
+          <div><strong>分级词库版本</strong><span>最近更新：${esc(updatedAt)} · GitHub Actions 每月自动检查一次</span></div>
+          <button class="btn teal" data-action="check-vocab-update"><i data-lucide="refresh-cw"></i>检查 GitHub 更新</button>
+        </div>
         <p style="margin-top:18px;color:var(--muted);font-size:12px">学习记录仅保存在你的浏览器 localStorage，不会上传到任何服务器。</p>
       </div>`;
+  }
+
+  async function checkVocabUpdate() {
+    const localMeta = BANK.vocabMeta || {};
+    let owner = "nma82439668hhf";
+    let repo = "ielts-passport";
+    if (/\.github\.io$/i.test(location.hostname)) {
+      owner = location.hostname.split(".")[0];
+      repo = location.pathname.split("/").filter(Boolean)[0] || "ielts-passport";
+    }
+    const urls = [
+      `https://cdn.jsdelivr.net/gh/${owner}/${repo}@main/data/vocab-meta.js`,
+      `https://raw.githubusercontent.com/${owner}/${repo}/main/data/vocab-meta.js`,
+    ];
+    try {
+      let text = "";
+      for (const url of urls) {
+        try {
+          const res = await fetch(url, { cache: "no-store" });
+          if (res.ok) {
+            text = await res.text();
+            break;
+          }
+        } catch (e) {
+          /* try the next mirror */
+        }
+      }
+      if (!text) throw new Error("update check failed");
+      const match = text.match(/vocabMeta\s*=\s*({[\s\S]*?});/);
+      if (!match) throw new Error("invalid meta");
+      const remote = JSON.parse(match[1]);
+      if (remote.updatedAt && remote.updatedAt !== localMeta.updatedAt) {
+        toast("发现新的词库版本，刷新页面即可加载更新");
+      } else {
+        toast("当前词库已经是最新版本");
+      }
+    } catch (e) {
+      toast("暂时无法连接 GitHub，请稍后再试");
+    }
   }
 
   /* Interaction handlers */
@@ -1018,6 +1433,43 @@
     if (action === "set-practice-level") {
       state.practiceLevel = target.dataset.level;
       render();
+      return;
+    }
+    if (action === "set-challenge-level") {
+      state.challengeLevel = target.dataset.level;
+      render();
+      return;
+    }
+    if (action === "set-exam-level") {
+      state.examLevel = target.dataset.level;
+      render();
+      return;
+    }
+    if (action === "check-vocab-update") {
+      checkVocabUpdate();
+      return;
+    }
+    if (action === "start-challenge") {
+      startSession("challenge", target.dataset.type, target.dataset.level || state.challengeLevel);
+      return;
+    }
+    if (action === "start-mock") {
+      startSession("mock", "mixed", target.dataset.level || state.examLevel);
+      return;
+    }
+    if (action === "submit-session") {
+      submitSession();
+      return;
+    }
+    if (action === "exit-session") {
+      stopSessionTimer();
+      state.session = null;
+      setView("home");
+      return;
+    }
+    if (action === "retry-session") {
+      const session = state.session;
+      if (session) startSession(session.kind, session.type, session.level);
       return;
     }
     if (action === "open-test") {
@@ -1123,14 +1575,15 @@
   }
 
   function updateLiveScore() {
-    const scoreEl = $("#live-score");
-    if (!scoreEl) return;
     const total = Object.keys(state.answerMap).length;
     const answered = $$("[data-qpath].selected, [data-qpath].q-input").filter((el) => {
       if (el.classList.contains("selected")) return true;
       return el.value && el.value.trim() !== "";
     }).length;
-    scoreEl.innerHTML = `已答 <strong>${Math.min(answered, total)}</strong> / ${total} 题`;
+    const sessionEl = $("#session-progress");
+    if (sessionEl) sessionEl.innerHTML = `已答 <strong>${Math.min(answered, total)}</strong> / ${total} 题`;
+    const scoreEl = $("#live-score");
+    if (scoreEl) scoreEl.innerHTML = `已答 <strong>${Math.min(answered, total)}</strong> / ${total} 题`;
   }
 
   function checkAnswers() {
@@ -1179,13 +1632,13 @@
       }
     });
 
-    const statSkill = state.currentTest.skill === "reading"
+    const statSkill = state.currentTest.statSkill || (state.currentTest.skill === "reading"
       ? "reading"
       : state.currentTest.skill === "listening"
         ? "listening"
         : state.currentTest.skill === "writing"
           ? "writing"
-          : "vocab";
+          : "vocab");
     const score = total ? Math.round((correct / total) * 100) : 0;
     const stat = state.progress.stats[statSkill];
     stat.attempted += total;
@@ -1194,12 +1647,17 @@
     state.progress.lastScore[`${statSkill}:${state.currentTest.id}`] = score;
     state.currentTest.checked = true;
     touchToday();
+    recordDailyQuestions(total);
+    recordDailyTest();
+    addXp(correct * 10 + 15);
+    state.progress.player.estimatedBand = estimateBand();
     save();
 
     const scoreEl = $("#live-score");
     if (scoreEl) scoreEl.innerHTML = `得分 <strong>${correct}</strong> / ${total} · ${score}%`;
     renderTarget();
     toast(total ? `核对完成：${correct}/${total} 题正确` : "没有可核对的答案");
+    return { correct, total, score };
   }
 
   function findClue(context, answer) {
@@ -1274,6 +1732,12 @@
     touchToday();
     state.progress.vocab.seen += 1;
     const key = `${state.vocabLevel}:${card.w}`;
+    const daily = ensureToday();
+    if (!daily.wordsSeen.includes(key)) {
+      daily.wordsSeen.push(key);
+      recordDailyWords(1);
+    }
+    addXp(known ? 10 : 2);
     if (known && !state.progress.vocab.known.includes(key)) {
       state.progress.vocab.known.push(key);
     }
@@ -1352,7 +1816,10 @@
       if (pop && !pop.hidden && currentPopoverAnchor) positionWordPopover(currentPopoverAnchor);
     }, { passive: true });
     $$(".nav-item").forEach((btn) => {
-      btn.addEventListener("click", () => setView(btn.dataset.view));
+      btn.addEventListener("click", () => {
+        if (state.view === "session" && btn.dataset.view !== "session") stopSessionTimer();
+        setView(btn.dataset.view);
+      });
     });
     $(".source-link").addEventListener("click", () => setView("about"));
     $("#menu-btn").addEventListener("click", () => {
