@@ -14,6 +14,7 @@
     reading: "阅读练习",
     listening: "听力练习",
     writing: "写作练习",
+    quiz: "词汇测验",
     vocab: "高频词汇",
     speaking: "口语题库",
     about: "题库来源与许可",
@@ -49,12 +50,15 @@
     view: "home",
     param: null,
     practiceSkill: "reading",
+    practiceLevel: "A1",
     progress: loadProgress(),
     currentTest: null,
     answerMap: {},
-    vocabDeck: shuffle([...Array((BANK.learn && BANK.learn.vocab ? BANK.learn.vocab.length : 0)).keys()]),
+    vocabLevel: "A1",
+    vocabDeck: [],
     vocabIndex: 0,
     speakingIndex: Math.floor(Math.random() * ((BANK.speaking || []).length || 1)),
+    speakingLevel: "A1",
     writingTaskIndex: 0,
   };
 
@@ -86,6 +90,43 @@
       [a[i], a[j]] = [a[j], a[i]];
     }
     return a;
+  }
+
+  function getLevelVocab(level) {
+    const levels = BANK.vocabLevels || {};
+    if (levels[level] && levels[level].length) return levels[level];
+    return BANK.learn && BANK.learn.vocab ? BANK.learn.vocab : [];
+  }
+
+  function resetVocabDeck() {
+    const vocab = getLevelVocab(state.vocabLevel);
+    state.vocabDeck = shuffle([...Array(vocab.length).keys()]);
+    state.vocabIndex = 0;
+    state.vocabDeckKey = state.vocabLevel;
+  }
+
+  function speakText(text, rate = 0.82) {
+    const value = String(text || "").trim();
+    if (!value || !window.speechSynthesis) {
+      toast("当前浏览器不支持朗读，请使用 Edge 或 Chrome");
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(value);
+    utter.lang = "en-GB";
+    utter.rate = rate;
+    const voices = window.speechSynthesis.getVoices ? window.speechSynthesis.getVoices() : [];
+    const preferred = voices.find((v) => /en-GB/i.test(v.lang)) || voices.find((v) => /^en/i.test(v.lang));
+    if (preferred) utter.voice = preferred;
+    window.speechSynthesis.speak(utter);
+  }
+
+  function levelOrder(level) {
+    return { A1: 1, A2: 2, B1: 3, B2: 4, C1: 5, IELTS: 6 }[level] || 99;
+  }
+
+  function withLevel(list, level) {
+    return (list || []).map((item) => ({ ...item, level: item.level || level }));
   }
 
   function esc(value) {
@@ -163,7 +204,8 @@
     $$(".nav-item").forEach((btn) => {
       const activeView = btn.dataset.view === state.view;
       const activeByParam = state.view === "lesson" && btn.dataset.view === "path";
-      btn.classList.toggle("is-active", activeView || activeByParam);
+      const activePractice = ["reading", "listening", "writing", "quiz"].includes(state.view) && btn.dataset.view === "practice";
+      btn.classList.toggle("is-active", activeView || activeByParam || activePractice);
     });
 
     let html = "";
@@ -175,6 +217,7 @@
       case "reading": html = renderReadingTest(state.param); break;
       case "listening": html = renderListeningTest(state.param); break;
       case "writing": html = renderWritingTest(state.param); break;
+      case "quiz": html = renderVocabQuizTest(state.param); break;
       case "vocab": html = renderVocab(); break;
       case "speaking": html = renderSpeaking(); break;
       case "about": html = renderAbout(); break;
@@ -300,13 +343,18 @@
   }
 
   function renderPractice() {
-    const skills = ["reading", "listening", "writing", "speaking"];
+    const skills = ["vocab", "reading", "listening", "writing"];
+    const levels = ["A1", "A2", "B1", "B2", "C1", "IELTS", "ALL"];
     const active = state.practiceSkill;
     const items = getPracticeItems(active);
     return `
       <div class="section-head reveal">
-        <div><h2>题库练习</h2><p>所有题目来自开放许可数据集，用于自学训练。</p></div>
+        <div><h2>题库练习</h2><p>按 CEFR 阶段选题。A1–A2 适合初一左右水平，B1–C1 逐步过渡到雅思。</p></div>
         <div class="seg">${skills.map((s) => `<button data-action="set-practice" data-skill="${s}" class="${s === active ? "is-active" : ""}">${SKILL_META[s].label}</button>`).join("")}</div>
+      </div>
+      <div class="filter-bar reveal" style="margin-bottom:14px">
+        <span style="font-size:12px;color:var(--muted)">阶段</span>
+        <div class="seg">${levels.map((level) => `<button data-action="set-practice-level" data-level="${level}" class="${level === state.practiceLevel ? "is-active" : ""}">${level === "ALL" ? "全部" : level}</button>`).join("")}</div>
       </div>
       <div class="test-list">
         ${items.length ? items.map((item) => renderPracticeCard(item)).join("") : `<div class="panel empty-state"><i data-lucide="inbox"></i><p>暂无题目</p></div>`}
@@ -314,9 +362,15 @@
   }
 
   function getPracticeItems(skill) {
-    if (skill === "reading") return BANK.reading || [];
-    if (skill === "listening") return BANK.listening || [];
-    if (skill === "writing") return BANK.writing || [];
+    const level = state.practiceLevel;
+    const staged = BANK.staged || {};
+    let list = [];
+    if (skill === "reading") list = withLevel(BANK.reading, "IELTS").concat(withLevel(staged.reading, "A1"));
+    if (skill === "listening") list = withLevel(BANK.listening, "IELTS").concat(withLevel(staged.listening, "A1"));
+    if (skill === "writing") list = withLevel(BANK.writing, "IELTS").concat(withLevel(staged.writing, "A1"));
+    if (skill === "vocab") list = (BANK.vocabQuiz || []).map((t) => ({ ...t, level: t.level || "A1" }));
+    if (level === "ALL") return list.sort((a, b) => levelOrder(a.level) - levelOrder(b.level));
+    return list.filter((item) => item.level === level);
     if (skill === "speaking") return []; // speaking has its own dedicated page
     return [];
   }
@@ -326,17 +380,27 @@
     const meta = SKILL_META[skill];
     const last = state.progress.lastScore[`${skill}:${item.id}`];
     const score = last !== undefined ? `${last}%` : "未开始";
+    const count = item.questions ? `${item.questions.length} 题` : item.passages ? `${item.passages.length} 篇` : item.sections ? `${item.sections.length} section` : "";
     return `
       <div class="test-card" data-action="open-test" data-skill="${skill}" data-id="${item.id}">
         <div class="test-icon ${meta.color}"><i data-lucide="${meta.icon}"></i></div>
-        <div class="test-main"><strong>${esc(item.title)}</strong><span>${esc(item.duration || "")} · ${esc(item.source || "")}</span></div>
+        <div class="test-main"><strong>${esc(item.title)}</strong><span><span class="tag ${item.level === "A1" || item.level === "A2" ? "teal" : "gold"}">${esc(item.level || "IELTS")}</span> ${esc(item.duration || "")} ${count ? "· " + esc(count) : ""}</span></div>
         <div class="test-score">${esc(score)}</div>
         <i data-lucide="chevron-right" style="width:18px;height:18px;color:var(--muted)"></i>
       </div>`;
   }
 
   function findTest(skill, id) {
-    const list = skill === "reading" ? BANK.reading : skill === "listening" ? BANK.listening : BANK.writing;
+    const staged = BANK.staged || {};
+    const list = skill === "reading"
+      ? withLevel(BANK.reading, "IELTS").concat(withLevel(staged.reading, "A1"))
+      : skill === "listening"
+        ? withLevel(BANK.listening, "IELTS").concat(withLevel(staged.listening, "A1"))
+        : skill === "writing"
+          ? withLevel(BANK.writing, "IELTS").concat(withLevel(staged.writing, "A1"))
+          : skill === "vocab"
+            ? (BANK.vocabQuiz || [])
+            : [];
     return (list || []).find((t) => t.id === id);
   }
 
@@ -356,12 +420,12 @@
     const questionsHtml = test.passages.map((p, pi) => `
       <div style="margin-bottom:24px">
         <div style="font-family:var(--font-mono);font-size:11px;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Passage ${p.number}</div>
-        ${p.groups.map((g, gi) => renderQuestionGroup(g, pi, gi)).join("")}
+        ${p.groups.map((g, gi) => renderQuestionGroup(g, pi, gi, p.content, test.level)).join("")}
       </div>`).join("");
 
     return `
       <div class="runner-head reveal">
-        <div><h2>${esc(test.title)}</h2><div class="runner-meta"><span class="tag red">阅读</span><span class="tag">${esc(test.duration)}</span></div></div>
+        <div><h2>${esc(test.title)}</h2><div class="runner-meta"><span class="tag red">阅读</span><span class="tag">${esc(test.level || "IELTS")}</span><span class="tag">${esc(test.duration)}</span></div></div>
         <button class="btn ghost" data-action="go" data-view="practice"><i data-lucide="arrow-left"></i>返回题库</button>
       </div>
       <div class="reading-layout">
@@ -384,7 +448,7 @@
     state.answerMap = {};
     return `
       <div class="runner-head reveal">
-        <div><h2>${esc(test.title)}</h2><div class="runner-meta"><span class="tag teal">听力</span><span class="tag">${esc(test.duration)}</span></div></div>
+        <div><h2>${esc(test.title)}</h2><div class="runner-meta"><span class="tag teal">听力</span><span class="tag">${esc(test.level || "IELTS")}</span><span class="tag">${esc(test.duration)}</span></div></div>
         <button class="btn ghost" data-action="go" data-view="practice"><i data-lucide="arrow-left"></i>返回题库</button>
       </div>
       <div class="section-tabs reveal">
@@ -401,12 +465,13 @@
     const audio = s.audio ? `
       <div class="audio-block"><audio controls src="${esc(s.audio)}" preload="metadata"></audio></div>` : `
       <div class="audio-fallback">本 section 的音频暂未提供，可先阅读下方题目与原文练习。</div>`;
-    const groups = (s.groups || []).map((g, gi) => renderQuestionGroup(g, index, gi)).join("");
+    const groups = (s.groups || []).map((g, gi) => renderQuestionGroup(g, index, gi, s.transcript, test.level)).join("");
     return `
       <h3 style="margin:0 0 12px;font-family:var(--font-display);font-size:19px;font-weight:900">Section ${s.number} · ${esc(s.title)}</h3>
       ${audio}
       ${groups}
       <button class="btn ghost transcript-toggle" data-action="toggle-transcript"><i data-lucide="file-text"></i>查看原文</button>
+      <button class="btn teal transcript-toggle" data-action="speak-transcript"><i data-lucide="volume-2"></i>AI 朗读原文</button>
       <div class="transcript" hidden>${esc(s.transcript)}</div>
       <div class="check-row">
         <div class="score-big" id="live-score">已答 <strong>0</strong> 题</div>
@@ -414,11 +479,11 @@
       </div>`;
   }
 
-  function renderQuestionGroup(group, passageIdx, groupIdx) {
+  function renderQuestionGroup(group, passageIdx, groupIdx, context, level) {
     if (group.type === "summary-completion") {
-      return renderSummaryGroup(group, passageIdx, groupIdx);
+      return renderSummaryGroup(group, passageIdx, groupIdx, context, level);
     }
-    const questions = (group.questions || []).map((q, qi) => renderQuestion(q, group, passageIdx, groupIdx, qi)).join("");
+    const questions = (group.questions || []).map((q, qi) => renderQuestion(q, group, passageIdx, groupIdx, qi, context, level)).join("");
     return `
       <div class="question-group">
         <div class="qg-head"><h4>${esc(group.type || "")}</h4></div>
@@ -428,20 +493,30 @@
       </div>`;
   }
 
-  function renderQuestion(q, group, passageIdx, groupIdx, qi) {
+  function renderQuestion(q, group, passageIdx, groupIdx, qi, context, level) {
     const base = `p${passageIdx}:g${groupIdx}:q${qi}`;
     const label = q.order || qi + 1;
+    const shared = {
+      context: context || "",
+      level: level || "",
+      explain: q.explain || "",
+      question: q.text || "",
+      word: q.word || "",
+      phonetic: q.phonetic || "",
+      options: q.options || [],
+    };
+    const wordButton = q.word ? `<button class="speak-btn" data-action="speak-word" data-word="${esc(q.word)}" title="朗读单词"><i data-lucide="volume-2"></i></button>` : "";
 
     if (q.type === "true-false" || q.type === "yes-no") {
       const qpath = `${base}`;
-      state.answerMap[qpath] = { type: "choice", answer: q.answer, accepted: q.accepted || [] };
+      state.answerMap[qpath] = { ...shared, type: "choice", answer: q.answer, accepted: q.accepted || [] };
       const buttons = q.options.map((opt) => `<button data-action="select-option" data-qpath="${qpath}" data-value="${esc(opt)}">${esc(opt)}</button>`).join("");
-      return `<div class="question"><div class="q-text"><span class="q-no">${label}</span><span>${esc(q.text)}</span></div><div class="q-options">${buttons}</div></div>`;
+      return `<div class="question"><div class="q-text"><span class="q-no">${label}</span><span>${esc(q.text)}</span></div><div class="q-options">${buttons}</div><div class="q-feedback-slot" data-feedback="${qpath}"></div></div>`;
     }
 
     if (q.type === "multiple-choice" || q.type === "matching-letters" || q.type === "matching-headings") {
       const qpath = `${base}`;
-      state.answerMap[qpath] = { type: "choice", answer: q.answer, accepted: [] };
+      state.answerMap[qpath] = { ...shared, type: "choice", answer: q.answer, accepted: [] };
       const options = q.options.map((opt, oi) => {
         let value = opt;
         if (q.type === "matching-headings") value = String(opt).split(".")[0].trim();
@@ -449,35 +524,35 @@
         if (q.type === "matching-letters") value = String(opt);
         return `<button data-action="select-option" data-qpath="${qpath}" data-value="${esc(value)}">${esc(opt)}</button>`;
       }).join("");
-      return `<div class="question"><div class="q-text"><span class="q-no">${label}</span><span>${esc(q.text)}</span></div><div class="q-options">${options}</div></div>`;
+      return `<div class="question"><div class="q-text"><span class="q-no">${label}</span><span>${wordButton}${esc(q.text)}</span></div><div class="q-options">${options}</div><div class="q-feedback-slot" data-feedback="${qpath}"></div></div>`;
     }
 
     if (q.type === "table-completion") {
       const cells = (q.gaps || []).map((gap, gi) => {
         const qpath = `${base}:g${gi}`;
         if (!gap.blank) return `<span style="color:var(--muted)">${esc(gap.text)}</span>`;
-        state.answerMap[qpath] = { type: "text", answer: gap.answer, accepted: [gap.answer] };
-        return `<span>${esc(gap.text)} <input class="q-input" data-qpath="${qpath}" /></span>`;
+        state.answerMap[qpath] = { ...shared, type: "text", answer: gap.answer, accepted: [gap.answer] };
+        return `<span>${esc(gap.text)} <input class="q-input" data-qpath="${qpath}" /><span class="q-feedback-slot inline" data-feedback="${qpath}"></span></span>`;
       }).join(" <span style=\"color:var(--line)\">·</span> ");
       return `<div class="question"><div class="q-text"><span class="q-no">${label}</span><span>${esc(q.text)}</span></div><div style="font-size:13px;line-height:2">${cells}</div></div>`;
     }
 
     // short-answer and sentence-completion fall here
     const qpath = `${base}`;
-    state.answerMap[qpath] = { type: "text", answer: q.answer, accepted: q.accepted || [] };
-    return `<div class="question"><div class="q-text"><span class="q-no">${label}</span><span>${esc(q.text)}</span></div><input class="q-input" data-qpath="${qpath}" /></div>`;
+    state.answerMap[qpath] = { ...shared, type: "text", answer: q.answer, accepted: q.accepted || [] };
+    return `<div class="question"><div class="q-text"><span class="q-no">${label}</span><span>${esc(q.text)}</span></div><input class="q-input" data-qpath="${qpath}" /><div class="q-feedback-slot" data-feedback="${qpath}"></div></div>`;
   }
 
-  function renderSummaryGroup(group, passageIdx, groupIdx) {
+  function renderSummaryGroup(group, passageIdx, groupIdx, context, level) {
     const base = `p${passageIdx}:g${groupIdx}`;
     const gaps = group.gaps || [];
     let gapIndex = 0;
     const textHtml = String(group.text).replace(/\{\{gap_[^}]+\}\}/g, () => {
       const qpath = `${base}:s${gapIndex}`;
       const gap = gaps[gapIndex] || {};
-      state.answerMap[qpath] = { type: "text", answer: gap.answer, accepted: [gap.answer] };
+      state.answerMap[qpath] = { type: "text", answer: gap.answer, accepted: [gap.answer], context: context || "", level: level || "", explain: "", question: group.text || "", word: "", phonetic: "", options: [] };
       gapIndex += 1;
-      return `<input class="q-input" data-qpath="${qpath}" style="width:110px;margin:0 3px" />`;
+      return `<input class="q-input" data-qpath="${qpath}" style="width:110px;margin:0 3px" /><span class="q-feedback-slot inline" data-feedback="${qpath}"></span>`;
     });
     return `
       <div class="question-group">
@@ -488,6 +563,26 @@
       </div>`;
   }
 
+  function renderVocabQuizTest(id) {
+    const test = findTest("vocab", id);
+    if (!test) return `<div class="panel empty-state"><p>未找到该套词汇题</p></div>`;
+    state.currentTest = { skill: "vocab", id, checked: false };
+    state.answerMap = {};
+    const group = { type: "multiple-choice", instructions: "选择正确答案。点击单词旁边的小喇叭可以听发音。", questions: test.questions || [] };
+    return `
+      <div class="runner-head reveal">
+        <div><h2>${esc(test.title)}</h2><div class="runner-meta"><span class="tag gold">词汇</span><span class="tag">${esc(test.level)}</span><span class="tag">${test.questions.length} 题</span></div></div>
+        <button class="btn ghost" data-action="go" data-view="practice"><i data-lucide="arrow-left"></i>返回题库</button>
+      </div>
+      <section class="panel questions-panel reveal">
+        ${renderQuestionGroup(group, 0, 0, "", test.level)}
+        <div class="check-row">
+          <div class="score-big" id="live-score">已答 <strong>0</strong> 题</div>
+          <button class="btn primary" data-action="check-answers"><i data-lucide="check-check"></i>核对答案</button>
+        </div>
+      </section>`;
+  }
+
   function renderWritingTest(id) {
     const test = findTest("writing", id);
     if (!test) return `<div class="panel empty-state"><p>未找到该套题</p></div>`;
@@ -496,7 +591,7 @@
     const tasks = test.tasks || [];
     return `
       <div class="runner-head reveal">
-        <div><h2>${esc(test.title)}</h2><div class="runner-meta"><span class="tag gold">写作</span></div></div>
+        <div><h2>${esc(test.title)}</h2><div class="runner-meta"><span class="tag gold">写作</span><span class="tag">${esc(test.level || "IELTS")}</span></div></div>
         <button class="btn ghost" data-action="go" data-view="practice"><i data-lucide="arrow-left"></i>返回题库</button>
       </div>
       <div class="section-tabs reveal">
@@ -528,11 +623,11 @@
   }
 
   function renderVocab() {
-    const vocab = BANK.learn.vocab || [];
+    const levels = ["A1", "A2", "B1", "B2", "C1"];
+    const vocab = getLevelVocab(state.vocabLevel);
     if (!vocab.length) return `<div class="panel empty-state"><p>暂无词汇</p></div>`;
-    if (state.vocabDeck.length === 0) {
-      state.vocabDeck = shuffle([...Array(vocab.length).keys()]);
-      state.vocabIndex = 0;
+    if (state.vocabDeck.length === 0 || state.vocabDeckKey !== state.vocabLevel) {
+      resetVocabDeck();
     }
     const idx = state.vocabDeck[Math.min(state.vocabIndex, state.vocabDeck.length - 1)];
     const card = vocab[idx];
@@ -541,43 +636,62 @@
     const knownCount = state.progress.vocab.known.length;
     return `
       <div class="section-head reveal">
-        <div><h2>高频词汇卡片</h2><p>点击卡片翻转，看看你是否记住了意思。</p></div>
+        <div><h2>分级词汇卡片</h2><p>点击单词或喇叭听发音，点击卡片空白处翻转释义。</p></div>
         <div class="tag teal">已掌握 ${knownCount} 个</div>
+      </div>
+      <div class="filter-bar reveal" style="margin-bottom:14px">
+        <span style="font-size:12px;color:var(--muted)">阶段</span>
+        <div class="seg">${levels.map((level) => `<button data-action="set-vocab-level" data-level="${level}" class="${level === state.vocabLevel ? "is-active" : ""}">${level}</button>`).join("")}</div>
       </div>
       <div class="card-deck reveal">
         <div class="flash-card" data-action="flip-card">
           <div class="flash-face front">
-            <span class="flash-pos">${esc(card.pos)}</span>
-            <div class="flash-word">${esc(card.w)}</div>
+            <span class="flash-pos">${esc(state.vocabLevel)} ${card.pos ? "· " + esc(card.pos) : ""}</span>
+            <div class="flash-word speakable" data-action="speak-word" data-word="${esc(card.w)}" title="点击听发音">${esc(card.w)} <i data-lucide="volume-2"></i></div>
+            ${card.p ? `<div class="flash-phonetic">${esc(card.p)}</div>` : ""}
             <div class="flash-zh">${esc(card.zh)}</div>
           </div>
           <div class="flash-face back">
             <div class="flash-def">${esc(card.en)}</div>
-            <div class="flash-example">${esc(card.ex)}</div>
-            <div class="flash-example-zh">${esc(card.exZh)}</div>
+            ${card.ex ? `<div class="flash-example">${esc(card.ex)}</div>` : ""}
+            ${card.exZh ? `<div class="flash-example-zh">${esc(card.exZh)}</div>` : ""}
           </div>
         </div>
         <div class="deck-actions">
+          <button class="btn ghost" data-action="flip-card"><i data-lucide="refresh-cw"></i>翻转卡片</button>
           <button class="btn ghost" data-action="vocab-again"><i data-lucide="rotate-ccw"></i>还不熟</button>
           <button class="btn primary" data-action="vocab-known"><i data-lucide="check"></i>认识了</button>
         </div>
-        <div class="deck-progress">${pos} / ${total} · 点击卡片查看释义</div>
+        <div class="deck-progress">${state.vocabLevel} · ${pos} / ${total} · 单词可点击发音</div>
       </div>`;
   }
 
   function renderSpeaking() {
-    const items = BANK.speaking || [];
+    const levels = ["A1", "A2", "B1", "B2", "C1", "IELTS"];
+    const staged = BANK.staged || {};
+    const level = state.speakingLevel;
+    let items = [];
+    if (level === "IELTS") {
+      items = BANK.speaking || [];
+    } else {
+      const set = (staged.speaking || []).find((s) => s.level === level);
+      items = set ? set.items.map((item, i) => ({ id: `${level}-${i}`, set: `${level} 分级口语`, question: item.q, answer: item.a })) : [];
+    }
     if (!items.length) return `<div class="panel empty-state"><p>暂无口语题目</p></div>`;
     state.speakingIndex = (state.speakingIndex % items.length + items.length) % items.length;
     const item = items[state.speakingIndex];
     return `
       <div class="section-head reveal">
-        <div><h2>口语题库</h2><p>共 ${items.length} 道 Part 1 / Part 2 题目与参考回答。</p></div>
+        <div><h2>口语题库</h2><p>A1–C1 分级口语题，共 ${items.length} 道，附参考回答。</p></div>
         <div class="tag teal">${esc(item.set)}</div>
+      </div>
+      <div class="filter-bar reveal" style="margin-bottom:14px">
+        <span style="font-size:12px;color:var(--muted)">阶段</span>
+        <div class="seg">${levels.map((l) => `<button data-action="set-speaking-level" data-level="${l}" class="${l === level ? "is-active" : ""}">${l}</button>`).join("")}</div>
       </div>
       <div class="panel speaking-card reveal">
         <span class="eyebrow">${esc(item.set)}</span>
-        <h3 class="speaking-question">${esc(item.question)}</h3>
+        <h3 class="speaking-question speakable" data-action="speak-passage" data-text="${esc(item.question)}" title="点击听问题">${esc(item.question)} <i data-lucide="volume-2"></i></h3>
         <div class="speaking-actions">
           <button class="btn primary" data-action="speak-next"><i data-lucide="shuffle"></i>下一题</button>
           <button class="btn ghost" data-action="speak-reveal"><i data-lucide="eye"></i>查看参考回答</button>
@@ -603,6 +717,8 @@
             <tr><td>听力</td><td><code>${esc(sources.listening)}</code></td><td>CC BY 4.0</td></tr>
             <tr><td>写作</td><td><code>${esc(sources.writing)}</code></td><td>CC BY 4.0</td></tr>
             <tr><td>口语</td><td><code>${esc(sources.speaking)}</code></td><td>Apache 2.0</td></tr>
+            <tr><td>分级词库</td><td><code>anig1scur/CEFR-Vocabulary-List</code></td><td>MIT</td></tr>
+            <tr><td>中英释义</td><td><code>skywind3000/ECDICT</code></td><td>MIT</td></tr>
           </tbody>
         </table>
         <p style="margin-top:18px;color:var(--muted);font-size:12px">学习记录仅保存在你的浏览器 localStorage，不会上传到任何服务器。</p>
@@ -628,9 +744,14 @@
       render();
       return;
     }
+    if (action === "set-practice-level") {
+      state.practiceLevel = target.dataset.level;
+      render();
+      return;
+    }
     if (action === "open-test") {
       const skill = target.dataset.skill;
-      setView(skill, target.dataset.id);
+      setView(skill === "vocab" ? "quiz" : skill, target.dataset.id);
       return;
     }
     if (action === "listen-section") {
@@ -645,6 +766,11 @@
     if (action === "toggle-transcript") {
       const t = $("#listen-section .transcript");
       if (t) t.hidden = !t.hidden;
+      return;
+    }
+    if (action === "speak-transcript") {
+      const t = $("#listen-section .transcript");
+      if (t) speakText(t.textContent, 0.82);
       return;
     }
     if (action === "writing-task") {
@@ -675,6 +801,20 @@
       $(".flash-card").classList.toggle("flipped");
       return;
     }
+    if (action === "speak-word") {
+      speakText(target.dataset.word, 0.78);
+      return;
+    }
+    if (action === "speak-passage") {
+      speakText(target.dataset.text, 0.82);
+      return;
+    }
+    if (action === "set-vocab-level") {
+      state.vocabLevel = target.dataset.level;
+      resetVocabDeck();
+      render();
+      return;
+    }
     if (action === "vocab-again") {
       advanceVocab(false);
       return;
@@ -684,7 +824,13 @@
       return;
     }
     if (action === "speak-next") {
-      state.speakingIndex = (state.speakingIndex + 1) % (BANK.speaking.length || 1);
+      state.speakingIndex = (state.speakingIndex + 1) % 1000;
+      render();
+      return;
+    }
+    if (action === "set-speaking-level") {
+      state.speakingLevel = target.dataset.level;
+      state.speakingIndex = 0;
       render();
       return;
     }
@@ -734,10 +880,36 @@
       }
       const ok = isCorrect(meta, selected);
       if (ok) correct += 1;
-      if (selectedEl) markElement(selectedEl, ok);
+      if (meta.type === "choice") {
+        const buttons = $$(`.q-options button[data-qpath="${qpath}"]`);
+        if (selected) {
+          buttons.forEach((btn) => {
+            if (normalize(btn.dataset.value) === normalize(meta.answer)) btn.classList.add("correct");
+          });
+          if (selectedEl && !ok) selectedEl.classList.add("wrong");
+        }
+      } else if (selectedEl) {
+        markElement(selectedEl, ok);
+      }
+      const slot = $(`[data-feedback="${qpath}"]`);
+      if (slot) {
+        if (!selected) {
+          slot.className = "q-feedback-slot";
+          slot.innerHTML = "";
+        } else {
+          slot.className = `q-feedback-slot ${ok ? "ok" : "no"}`;
+          slot.innerHTML = buildExplanation(meta, ok);
+        }
+      }
     });
 
-    const statSkill = state.currentTest.skill === "reading" ? "reading" : "listening";
+    const statSkill = state.currentTest.skill === "reading"
+      ? "reading"
+      : state.currentTest.skill === "listening"
+        ? "listening"
+        : state.currentTest.skill === "writing"
+          ? "writing"
+          : "vocab";
     const score = total ? Math.round((correct / total) * 100) : 0;
     const stat = state.progress.stats[statSkill];
     stat.attempted += total;
@@ -752,6 +924,29 @@
     if (scoreEl) scoreEl.innerHTML = `得分 <strong>${correct}</strong> / ${total} · ${score}%`;
     renderTarget();
     toast(total ? `核对完成：${correct}/${total} 题正确` : "没有可核对的答案");
+  }
+
+  function findClue(context, answer) {
+    const text = String(context || "");
+    const target = normalize(answer);
+    if (!text || !target) return "";
+    const sentences = text.split(/(?<=[.!?])\s+/);
+    const hit = sentences.find((s) => normalize(s).includes(target));
+    return hit ? `原文线索：${hit.trim()}` : "";
+  }
+
+  function buildExplanation(meta, ok) {
+    const answer = meta.answer || "";
+    if (meta.explain) {
+      return `<strong>${ok ? "正确" : "需要再看一次"}</strong><br>${esc(meta.explain)}`;
+    }
+    let tip = "";
+    if (meta.question && meta.question.includes("最接近")) tip = "词汇题先看词性和中文释义，再排除意思差距最大的选项。";
+    else if (meta.type === "choice") tip = "选择题先划题干关键词，再回到原文或录音找同义替换。";
+    else tip = "填空题注意词数限制、单复数和拼写。";
+    const clue = findClue(meta.context, answer);
+    const correctLine = ok ? "你的答案正确。" : `正确答案是：${answer}。`;
+    return `<strong>${ok ? "正确" : "需要再看一次"}</strong><br>${esc(correctLine)} ${esc(tip)}${clue ? `<br>${esc(clue)}` : ""}`;
   }
 
   function isCorrect(meta, selected) {
@@ -796,13 +991,15 @@
   }
 
   function advanceVocab(known) {
-    const vocab = BANK.learn.vocab || [];
+    const vocab = getLevelVocab(state.vocabLevel);
     const idx = state.vocabDeck[state.vocabIndex];
     const card = vocab[idx];
+    if (!card) return;
     touchToday();
     state.progress.vocab.seen += 1;
-    if (known && !state.progress.vocab.known.includes(card.w)) {
-      state.progress.vocab.known.push(card.w);
+    const key = `${state.vocabLevel}:${card.w}`;
+    if (known && !state.progress.vocab.known.includes(key)) {
+      state.progress.vocab.known.push(key);
     }
     state.vocabDeck.splice(state.vocabIndex, 1);
     if (!known) state.vocabDeck.push(idx);
