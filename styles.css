@@ -1438,6 +1438,17 @@ button {
   color: var(--teal-deep);
 }
 
+.is-speaking,
+.is-speaking svg {
+  color: var(--red) !important;
+  animation: speak-pulse 0.8s ease-in-out infinite;
+}
+
+@keyframes speak-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.08); opacity: 0.72; }
+}
+
 .speak-btn {
   display: inline-grid;
   place-items: center;

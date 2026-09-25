@@ -105,20 +105,79 @@
     state.vocabDeckKey = state.vocabLevel;
   }
 
+  let activeAudio = null;
+  let activeUtterance = null;
+
+  function stopSpeechAudio() {
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    if (activeAudio) {
+      try {
+        activeAudio.pause();
+        activeAudio.currentTime = 0;
+      } catch (e) {
+        /* ignore */
+      }
+      activeAudio = null;
+    }
+    activeUtterance = null;
+  }
+
   function speakText(text, rate = 0.82) {
     const value = String(text || "").trim();
-    if (!value || !window.speechSynthesis) {
+    if (!value) return;
+    stopSpeechAudio();
+    if (!window.speechSynthesis || !window.SpeechSynthesisUtterance) {
       toast("当前浏览器不支持朗读，请使用 Edge 或 Chrome");
       return;
     }
-    window.speechSynthesis.cancel();
     const utter = new SpeechSynthesisUtterance(value);
-    utter.lang = "en-GB";
+    activeUtterance = utter;
+    utter.lang = "en-US";
     utter.rate = rate;
+    utter.volume = 1;
     const voices = window.speechSynthesis.getVoices ? window.speechSynthesis.getVoices() : [];
-    const preferred = voices.find((v) => /en-GB/i.test(v.lang)) || voices.find((v) => /^en/i.test(v.lang));
+    const preferred = voices.find((v) => /en-US/i.test(v.lang)) || voices.find((v) => /^en/i.test(v.lang));
     if (preferred) utter.voice = preferred;
-    window.speechSynthesis.speak(utter);
+    try {
+      window.speechSynthesis.resume();
+      window.speechSynthesis.speak(utter);
+    } catch (e) {
+      toast("语音播放失败，请再试一次");
+    }
+  }
+
+  function speakWord(word, trigger) {
+    const value = String(word || "").trim();
+    if (!value) return;
+    stopSpeechAudio();
+    if (trigger) trigger.classList.add("is-speaking");
+    const unmark = () => {
+      if (trigger) trigger.classList.remove("is-speaking");
+    };
+    let usedFallback = false;
+    const fallback = () => {
+      if (usedFallback) return;
+      usedFallback = true;
+      unmark();
+      speakText(value, 0.78);
+    };
+
+    // Youdao's public dictionary audio is reliable on desktop and mobile browsers.
+    const url = `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(value)}&type=2`;
+    const audio = new Audio(url);
+    activeAudio = audio;
+    audio.preload = "auto";
+    audio.volume = 1;
+    audio.addEventListener("ended", () => {
+      unmark();
+      if (activeAudio === audio) activeAudio = null;
+    });
+    audio.addEventListener("error", fallback);
+    const playPromise = audio.play();
+    if (playPromise && playPromise.catch) playPromise.catch(fallback);
+    window.setTimeout(() => {
+      if (!usedFallback && audio.paused && audio.currentTime === 0) fallback();
+    }, 1400);
   }
 
   function levelOrder(level) {
@@ -802,7 +861,7 @@
       return;
     }
     if (action === "speak-word") {
-      speakText(target.dataset.word, 0.78);
+      speakWord(target.dataset.word, target);
       return;
     }
     if (action === "speak-passage") {
