@@ -66,6 +66,7 @@
   const dictionaryShardPromises = new Map();
   let popoverToken = 0;
   let currentPopoverWord = "";
+  let currentPopoverAnchor = null;
 
   function loadProgress() {
     try {
@@ -279,11 +280,32 @@
   }
 
   async function onlineTranslate(word) {
-    const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(word)}&langpair=en|zh-CN`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error("online translation failed");
-    const data = await res.json();
-    return (data && data.responseData && data.responseData.translatedText) || "";
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 5000);
+    try {
+      const youdao = `https://aidemo.youdao.com/trans?q=${encodeURIComponent(word)}&from=en&to=zh-CHS`;
+      const res = await fetch(youdao, { signal: controller.signal });
+      if (res.ok) {
+        const data = await res.json();
+        const text = Array.isArray(data.translation) ? data.translation[0] : data.translation;
+        if (text) return text;
+      }
+    } catch (e) {
+      /* try the next provider */
+    } finally {
+      window.clearTimeout(timer);
+    }
+    const fallbackController = new AbortController();
+    const fallbackTimer = window.setTimeout(() => fallbackController.abort(), 5000);
+    try {
+      const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(word)}&langpair=en|zh-CN`;
+      const res = await fetch(url, { signal: fallbackController.signal });
+      if (!res.ok) throw new Error("online translation failed");
+      const data = await res.json();
+      return (data && data.responseData && data.responseData.translatedText) || "";
+    } finally {
+      window.clearTimeout(fallbackTimer);
+    }
   }
 
   async function lookupWord(word) {
@@ -322,6 +344,7 @@
   function hideWordPopover() {
     const pop = $("#word-popover");
     if (pop) pop.hidden = true;
+    currentPopoverAnchor = null;
     popoverToken += 1;
   }
 
@@ -364,6 +387,7 @@
     if (!value) return;
     const pop = $("#word-popover");
     currentPopoverWord = value;
+    currentPopoverAnchor = anchor;
     const token = ++popoverToken;
     $("#pop-word").textContent = value;
     $("#pop-phonetic").textContent = "";
@@ -373,7 +397,7 @@
     const result = await lookupWord(value);
     if (token !== popoverToken || !result) return;
     renderPopover(result);
-    positionWordPopover(anchor);
+    positionWordPopover(currentPopoverAnchor || anchor);
   }
 
   function normalize(value) {
@@ -1323,7 +1347,10 @@
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") hideWordPopover();
     });
-    window.addEventListener("scroll", () => hideWordPopover(), { passive: true });
+    window.addEventListener("scroll", () => {
+      const pop = $("#word-popover");
+      if (pop && !pop.hidden && currentPopoverAnchor) positionWordPopover(currentPopoverAnchor);
+    }, { passive: true });
     $$(".nav-item").forEach((btn) => {
       btn.addEventListener("click", () => setView(btn.dataset.view));
     });
