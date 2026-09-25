@@ -60,7 +60,12 @@
     speakingIndex: Math.floor(Math.random() * ((BANK.speaking || []).length || 1)),
     speakingLevel: "A1",
     writingTaskIndex: 0,
+    lookupEnabled: true,
   };
+
+  let dictionaryPromise = null;
+  let popoverToken = 0;
+  let currentPopoverWord = "";
 
   function loadProgress() {
     try {
@@ -250,6 +255,121 @@
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
+  }
+
+  function cleanLookupWord(value) {
+    return String(value || "").toLowerCase().replace(/^[^a-z]+|[^a-z'-]+$/g, "").trim();
+  }
+
+  function ensureDictionary() {
+    if (BANK.dictionary) return Promise.resolve(BANK.dictionary);
+    if (dictionaryPromise) return dictionaryPromise;
+    dictionaryPromise = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "data/dictionary.js";
+      script.onload = () => resolve(BANK.dictionary || {});
+      script.onerror = () => reject(new Error("dictionary load failed"));
+      document.head.appendChild(script);
+    });
+    return dictionaryPromise;
+  }
+
+  async function onlineTranslate(word) {
+    const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(word)}&langpair=en|zh-CN`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("online translation failed");
+    const data = await res.json();
+    return (data && data.responseData && data.responseData.translatedText) || "";
+  }
+
+  async function lookupWord(word) {
+    const value = cleanLookupWord(word);
+    if (!value) return null;
+    let dictionary = {};
+    try {
+      dictionary = await ensureDictionary();
+    } catch (e) {
+      dictionary = {};
+    }
+    const entry = dictionary[value];
+    if (entry) {
+      return { word: value, phonetic: entry[0] || "", zh: entry[1] || "", en: entry[2] || "", pos: entry[3] || "", source: "本地词典" };
+    }
+    try {
+      const zh = await onlineTranslate(value);
+      return { word: value, phonetic: "", zh: zh || "暂无翻译", en: "", pos: "", source: "在线翻译" };
+    } catch (e) {
+      return { word: value, phonetic: "", zh: "暂时查不到这个词，请检查网络后重试。", en: "", pos: "", source: "查询失败" };
+    }
+  }
+
+  function wordify(text) {
+    return String(text || "")
+      .split(/([A-Za-z][A-Za-z'-]*)/)
+      .map((part) => {
+        if (/^[A-Za-z][A-Za-z'-]*$/.test(part) && part.length > 1) {
+          return `<span class="lookup-word" data-action="lookup-word" data-word="${esc(part)}">${esc(part)}</span>`;
+        }
+        return esc(part);
+      })
+      .join("");
+  }
+
+  function hideWordPopover() {
+    const pop = $("#word-popover");
+    if (pop) pop.hidden = true;
+    popoverToken += 1;
+  }
+
+  function positionWordPopover(anchor) {
+    const pop = $("#word-popover");
+    if (!pop || !anchor) return;
+    pop.hidden = false;
+    if (window.innerWidth <= 640) {
+      pop.style.left = "12px";
+      pop.style.right = "12px";
+      pop.style.top = "auto";
+      pop.style.bottom = "12px";
+      return;
+    }
+    const rect = anchor.getBoundingClientRect();
+    const width = pop.offsetWidth || 330;
+    const height = pop.offsetHeight || 210;
+    let left = Math.min(window.innerWidth - width - 14, Math.max(14, rect.left));
+    let top = rect.bottom + 10;
+    if (top + height > window.innerHeight - 14) top = Math.max(14, rect.top - height - 10);
+    pop.style.left = `${left}px`;
+    pop.style.top = `${top}px`;
+    pop.style.right = "auto";
+    pop.style.bottom = "auto";
+  }
+
+  function renderPopover(result) {
+    $("#pop-word").textContent = result.word;
+    $("#pop-phonetic").textContent = result.phonetic || "";
+    $("#pop-source").textContent = result.source;
+    const pos = result.pos ? `<span class="tag gold">${esc(result.pos)}</span>` : "";
+    const zh = result.zh ? `<div class="pop-translation">${esc(result.zh)}</div>` : "";
+    const en = result.en ? `<div class="pop-definition"><strong>English:</strong> ${wordify(result.en)}</div>` : "";
+    $("#pop-body").innerHTML = `${pos}${zh}${en}`;
+    refreshIcons();
+  }
+
+  async function showWordPopover(word, anchor) {
+    const value = cleanLookupWord(word);
+    if (!value) return;
+    const pop = $("#word-popover");
+    currentPopoverWord = value;
+    const token = ++popoverToken;
+    $("#pop-word").textContent = value;
+    $("#pop-phonetic").textContent = "";
+    $("#pop-source").textContent = "";
+    $("#pop-body").innerHTML = `<div class="pop-loading"><span></span>正在查词…</div>`;
+    positionWordPopover(anchor);
+    const result = await lookupWord(value);
+    if (token !== popoverToken || !result) return;
+    renderPopover(result);
+    positionWordPopover(anchor);
   }
 
   function normalize(value) {
@@ -528,7 +648,7 @@
     const passageHtml = test.passages.map((p, pi) => `
       <div style="margin-bottom:24px">
         <h3>Passage ${p.number} · ${esc(p.title)}</h3>
-        <div class="passage-text">${esc(p.content)}</div>
+        <div class="passage-text">${wordify(p.content)}</div>
       </div>`).join("");
 
     const questionsHtml = test.passages.map((p, pi) => `
@@ -586,7 +706,7 @@
       ${groups}
       <button class="btn ghost transcript-toggle" data-action="toggle-transcript"><i data-lucide="file-text"></i>查看原文</button>
       <button class="btn teal transcript-toggle" data-action="speak-transcript"><i data-lucide="volume-2"></i>AI 朗读原文</button>
-      <div class="transcript" hidden>${esc(s.transcript)}</div>
+      <div class="transcript" hidden>${wordify(s.transcript)}</div>
       <div class="check-row">
         <div class="score-big" id="live-score">已答 <strong>0</strong> 题</div>
         <button class="btn primary" data-action="check-answers"><i data-lucide="check-check"></i>核对答案</button>
@@ -625,7 +745,7 @@
       const qpath = `${base}`;
       state.answerMap[qpath] = { ...shared, type: "choice", answer: q.answer, accepted: q.accepted || [] };
       const buttons = q.options.map((opt) => `<button data-action="select-option" data-qpath="${qpath}" data-value="${esc(opt)}">${esc(opt)}</button>`).join("");
-      return `<div class="question"><div class="q-text"><span class="q-no">${label}</span><span>${esc(q.text)}</span></div><div class="q-options">${buttons}</div><div class="q-feedback-slot" data-feedback="${qpath}"></div></div>`;
+      return `<div class="question"><div class="q-text"><span class="q-no">${label}</span><span>${wordify(q.text)}</span></div><div class="q-options">${buttons}</div><div class="q-feedback-slot" data-feedback="${qpath}"></div></div>`;
     }
 
     if (q.type === "multiple-choice" || q.type === "matching-letters" || q.type === "matching-headings") {
@@ -638,7 +758,7 @@
         if (q.type === "matching-letters") value = String(opt);
         return `<button data-action="select-option" data-qpath="${qpath}" data-value="${esc(value)}">${esc(opt)}</button>`;
       }).join("");
-      return `<div class="question"><div class="q-text"><span class="q-no">${label}</span><span>${wordButton}${esc(q.text)}</span></div><div class="q-options">${options}</div><div class="q-feedback-slot" data-feedback="${qpath}"></div></div>`;
+      return `<div class="question"><div class="q-text"><span class="q-no">${label}</span><span>${wordButton}${wordify(q.text)}</span></div><div class="q-options">${options}</div><div class="q-feedback-slot" data-feedback="${qpath}"></div></div>`;
     }
 
     if (q.type === "table-completion") {
@@ -648,13 +768,13 @@
         state.answerMap[qpath] = { ...shared, type: "text", answer: gap.answer, accepted: [gap.answer] };
         return `<span>${esc(gap.text)} <input class="q-input" data-qpath="${qpath}" /><span class="q-feedback-slot inline" data-feedback="${qpath}"></span></span>`;
       }).join(" <span style=\"color:var(--line)\">·</span> ");
-      return `<div class="question"><div class="q-text"><span class="q-no">${label}</span><span>${esc(q.text)}</span></div><div style="font-size:13px;line-height:2">${cells}</div></div>`;
+      return `<div class="question"><div class="q-text"><span class="q-no">${label}</span><span>${wordify(q.text)}</span></div><div style="font-size:13px;line-height:2">${cells}</div></div>`;
     }
 
     // short-answer and sentence-completion fall here
     const qpath = `${base}`;
     state.answerMap[qpath] = { ...shared, type: "text", answer: q.answer, accepted: q.accepted || [] };
-    return `<div class="question"><div class="q-text"><span class="q-no">${label}</span><span>${esc(q.text)}</span></div><input class="q-input" data-qpath="${qpath}" /><div class="q-feedback-slot" data-feedback="${qpath}"></div></div>`;
+    return `<div class="question"><div class="q-text"><span class="q-no">${label}</span><span>${wordify(q.text)}</span></div><input class="q-input" data-qpath="${qpath}" /><div class="q-feedback-slot" data-feedback="${qpath}"></div></div>`;
   }
 
   function renderSummaryGroup(group, passageIdx, groupIdx, context, level) {
@@ -721,13 +841,13 @@
     state.writingTaskIndex = index;
     const draft = state.progress.drafts[`${test.id}:${task.number}`] || "";
     const figure = task.image ? `
-      <div class="task-figure"><img src="${esc(task.image)}" alt="${esc(task.title)}" loading="lazy" />${task.figure ? `<p class="figure-desc">${esc(task.figure)}</p>` : ""}</div>` : "";
+      <div class="task-figure"><img src="${esc(task.image)}" alt="${esc(task.title)}" loading="lazy" />${task.figure ? `<p class="figure-desc">${wordify(task.figure)}</p>` : ""}</div>` : "";
     return `
       <div class="writing-grid">
         <section class="panel task-panel">
           <h3>${esc(task.title)}</h3>
           <div class="tag ${task.type === "task1" ? "teal" : "gold"}" style="margin-bottom:12px">${esc(task.time)} · 至少 ${task.minWords} 词</div>
-          <div class="task-prompt">${esc(task.prompt)}</div>
+          <div class="task-prompt">${wordify(task.prompt)}</div>
           ${figure}
         </section>
         <section class="panel task-panel write-area">
@@ -773,7 +893,7 @@
             <div class="flash-zh">${esc(card.zh)}</div>
           </div>
           <div class="flash-face back">
-            <div class="flash-def">${esc(card.en)}</div>
+            <div class="flash-def">${wordify(card.en)}</div>
             ${card.ex ? `<div class="flash-example">${esc(card.ex)}</div>` : ""}
             ${card.exZh ? `<div class="flash-example-zh">${esc(card.exZh)}</div>` : ""}
           </div>
@@ -812,7 +932,7 @@
       </div>
       <div class="panel speaking-card reveal">
         <span class="eyebrow">${esc(item.set)}</span>
-        <h3 class="speaking-question speakable" data-action="speak-passage" data-text="${esc(item.question)}" title="点击听问题">${esc(item.question)} <i data-lucide="volume-2"></i></h3>
+        <h3 class="speaking-question speakable" data-action="speak-passage" data-text="${esc(item.question)}" title="点击听问题">${wordify(item.question)} <i data-lucide="volume-2"></i></h3>
         <div class="speaking-actions">
           <button class="btn primary" data-action="speak-next"><i data-lucide="shuffle"></i>下一题</button>
           <button class="btn ghost" data-action="speak-reveal"><i data-lucide="eye"></i>查看参考回答</button>
@@ -820,7 +940,7 @@
         </div>
         <div class="model-answer" data-model hidden>
           <h4>参考回答</h4>
-          <p>${esc(item.answer)}</p>
+          <p>${wordify(item.answer)}</p>
         </div>
       </div>`;
   }
@@ -924,6 +1044,11 @@
     }
     if (action === "speak-word") {
       speakWord(target.dataset.word, target);
+      return;
+    }
+    if (action === "lookup-word") {
+      if (!state.lookupEnabled) return;
+      showWordPopover(target.dataset.word, target);
       return;
     }
     if (action === "speak-passage") {
@@ -1174,6 +1299,23 @@
       if (e.target.matches("[data-writing-id]")) updateWordCount();
       if (e.target.matches("[data-qpath]")) updateLiveScore();
     });
+    $("#lookup-toggle").addEventListener("click", () => {
+      state.lookupEnabled = !state.lookupEnabled;
+      $("#lookup-toggle").classList.toggle("is-active", state.lookupEnabled);
+      toast(state.lookupEnabled ? "点词讲解已开启" : "点词讲解已关闭");
+      if (!state.lookupEnabled) hideWordPopover();
+    });
+    $("#pop-close").addEventListener("click", hideWordPopover);
+    $("#pop-speak").addEventListener("click", () => speakWord(currentPopoverWord, $("#pop-speak")));
+    document.addEventListener("mousedown", (e) => {
+      const pop = $("#word-popover");
+      if (!pop || pop.hidden) return;
+      if (!pop.contains(e.target) && !e.target.closest(".lookup-word")) hideWordPopover();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") hideWordPopover();
+    });
+    window.addEventListener("scroll", () => hideWordPopover(), { passive: true });
     $$(".nav-item").forEach((btn) => {
       btn.addEventListener("click", () => setView(btn.dataset.view));
     });

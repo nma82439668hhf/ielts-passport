@@ -68,6 +68,9 @@
         <h1 id="view-title">今日学习</h1>
       </div>
       <div class="topbar-actions">
+        <button class="lookup-toggle is-active" id="lookup-toggle" title="点击英文单词查看翻译和讲解">
+          <i data-lucide="book-open-text"></i><span>点词讲解</span>
+        </button>
         <div class="streak-pill" title="连续学习天数">
           <i data-lucide="flame"></i><span id="streak-value">0</span> 天
         </div>
@@ -86,6 +89,21 @@
   </main>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <aside class="word-popover" id="word-popover" hidden>
+    <div class="word-popover-head">
+      <div>
+        <strong id="pop-word"></strong>
+        <span id="pop-phonetic"></span>
+      </div>
+      <button class="pop-close" id="pop-close" aria-label="关闭"><i data-lucide="x"></i></button>
+    </div>
+    <div class="word-popover-body" id="pop-body"></div>
+    <div class="word-popover-actions">
+      <button class="btn teal" id="pop-speak"><i data-lucide="volume-2"></i>发音</button>
+      <span class="pop-source" id="pop-source"></span>
+    </div>
+  </aside>
 
   <script src="vendor/lucide.min.js"></script>
   <script src="data/learn.js"></script>
