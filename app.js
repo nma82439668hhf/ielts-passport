@@ -918,7 +918,14 @@
       state.progress.lastScore[`challenge:${session.type}:${session.level}`] = result.score;
       state.progress.player.estimatedBand = estimateBand();
     }
-    state.session.result = { correct: result.correct, total: result.total, score: result.score, band, xp };
+    state.session.result = {
+      correct: result.correct,
+      total: result.total,
+      score: result.score,
+      band,
+      xp,
+      passed: band ? band >= state.progress.target : false,
+    };
     save();
     render();
   }
@@ -985,11 +992,14 @@
     if (!session) return `<div class="panel empty-state"><p>请先选择挑战或模拟考试。</p></div>`;
     if (session.result) {
       const r = session.result;
+      const passLine = r.band
+        ? (r.passed ? `已达到目标 Band ${state.progress.target.toFixed(1)}。` : `距离目标 Band ${state.progress.target.toFixed(1)} 还差 ${Math.max(0, state.progress.target - r.band).toFixed(1)}。`)
+        : "继续挑战可以提升熟练度。";
       return `
         <div class="exam-result panel reveal">
           <div class="score-orb large"><strong>${r.score}%</strong><span>正确率</span></div>
           <h2>${r.band ? `预测 Band ${r.band.toFixed(1)}` : "挑战完成"}</h2>
-          <p>答对 ${r.correct} / ${r.total} 题，获得 ${r.xp} XP。${r.band ? "当前预测分已更新。" : "继续挑战可以提升熟练度。"}</p>
+          <p>答对 ${r.correct} / ${r.total} 题，获得 ${r.xp} XP。${passLine}</p>
           <div class="hero-actions">
             <button class="btn primary" data-action="retry-session"><i data-lucide="rotate-ccw"></i>再来一次</button>
             <button class="btn ghost" data-action="go" data-view="${session.kind === "mock" ? "exam" : "challenges"}"><i data-lucide="arrow-left"></i>返回</button>
