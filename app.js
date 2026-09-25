@@ -63,7 +63,7 @@
     lookupEnabled: true,
   };
 
-  let dictionaryPromise = null;
+  const dictionaryShardPromises = new Map();
   let popoverToken = 0;
   let currentPopoverWord = "";
 
@@ -261,17 +261,21 @@
     return String(value || "").toLowerCase().replace(/^[^a-z]+|[^a-z'-]+$/g, "").trim();
   }
 
-  function ensureDictionary() {
-    if (BANK.dictionary) return Promise.resolve(BANK.dictionary);
-    if (dictionaryPromise) return dictionaryPromise;
-    dictionaryPromise = new Promise((resolve, reject) => {
+  function ensureDictionary(word) {
+    const value = String(word || "").trim().toLowerCase();
+    const first = value[0] || "";
+    const shard = /^[a-z]$/.test(first) ? first : "other";
+    if (BANK.dictionary && BANK.dictionary[value]) return Promise.resolve(BANK.dictionary);
+    if (dictionaryShardPromises.has(shard)) return dictionaryShardPromises.get(shard);
+    const promise = new Promise((resolve, reject) => {
       const script = document.createElement("script");
-      script.src = "data/dictionary.js";
+      script.src = `data/dict/${shard}.js`;
       script.onload = () => resolve(BANK.dictionary || {});
       script.onerror = () => reject(new Error("dictionary load failed"));
       document.head.appendChild(script);
     });
-    return dictionaryPromise;
+    dictionaryShardPromises.set(shard, promise);
+    return promise;
   }
 
   async function onlineTranslate(word) {
@@ -287,7 +291,7 @@
     if (!value) return null;
     let dictionary = {};
     try {
-      dictionary = await ensureDictionary();
+      dictionary = await ensureDictionary(value);
     } catch (e) {
       dictionary = {};
     }
@@ -803,6 +807,7 @@
     state.currentTest = { skill: "vocab", id, checked: false };
     state.answerMap = {};
     prefetchWords((test.questions || []).slice(0, 12).map((q) => q.word));
+    if (test.questions && test.questions[0] && test.questions[0].word) ensureDictionary(test.questions[0].word).catch(() => {});
     const group = { type: "multiple-choice", instructions: "选择正确答案。点击单词旁边的小喇叭可以听发音。", questions: test.questions || [] };
     return `
       <div class="runner-head reveal">
@@ -872,6 +877,7 @@
       if (next) prefetchList.push(next.w);
     }
     prefetchWords(prefetchList);
+    ensureDictionary(card.w).catch(() => {});
     const total = state.vocabDeck.length;
     const pos = Math.min(state.vocabIndex + 1, total);
     const knownCount = state.progress.vocab.known.length;
@@ -1289,8 +1295,10 @@
   function bindEvents() {
     $("#view-root").addEventListener("click", handleAction);
     const prefetchFromEvent = (e) => {
-      const el = e.target.closest && e.target.closest("[data-action=speak-word]");
-      if (el) preloadWord(el.dataset.word);
+      const el = e.target.closest && e.target.closest("[data-action=speak-word], [data-action=lookup-word]");
+      if (!el || !el.dataset.word) return;
+      ensureDictionary(el.dataset.word).catch(() => {});
+      if (el.dataset.action === "speak-word") preloadWord(el.dataset.word);
     };
     $("#view-root").addEventListener("pointerover", prefetchFromEvent);
     $("#view-root").addEventListener("focusin", prefetchFromEvent);
