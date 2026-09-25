@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>IELTS Passport · 从零到雅思上岸</title>
+  <meta name="description" content="面向英语新手的雅思学习与练习网站：学习地图、高频词汇、听力阅读写作口语题库与进度追踪。" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,900&family=Sora:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <i data-lucide="stamp"></i>
+      </div>
+      <div class="brand-text">
+        <strong>IELTS Passport</strong>
+        <span>从零到雅思上岸</span>
+      </div>
+    </div>
+
+    <nav class="nav" aria-label="主导航">
+      <button class="nav-item is-active" data-view="home">
+        <i data-lucide="layout-dashboard"></i><span>今日学习</span>
+      </button>
+      <button class="nav-item" data-view="path">
+        <i data-lucide="map"></i><span>学习地图</span>
+      </button>
+      <button class="nav-item" data-view="practice">
+        <i data-lucide="book-open-check"></i><span>题库练习</span>
+      </button>
+      <button class="nav-item" data-view="vocab">
+        <i data-lucide="notebook-tabs"></i><span>高频词汇</span>
+      </button>
+      <button class="nav-item" data-view="speaking">
+        <i data-lucide="mic-2"></i><span>口语题库</span>
+      </button>
+    </nav>
+
+    <div class="sidebar-foot">
+      <div class="target-card">
+        <span class="target-label">目标分数</span>
+        <div class="target-control">
+          <button id="target-minus" aria-label="降低目标分数"><i data-lucide="minus"></i></button>
+          <strong id="target-value">6.5</strong>
+          <button id="target-plus" aria-label="提高目标分数"><i data-lucide="plus"></i></button>
+        </div>
+      </div>
+      <button class="source-link" data-view="about">
+        <i data-lucide="info"></i><span>题库来源与许可</span>
+      </button>
+    </div>
+  </aside>
+
+  <div class="scrim" id="scrim"></div>
+
+  <main class="main">
+    <header class="topbar">
+      <button class="menu-btn" id="menu-btn" aria-label="打开菜单"><i data-lucide="menu"></i></button>
+      <div class="topbar-title">
+        <span class="eyebrow">IELTS ACADEMIC · BEGINNER PATH</span>
+        <h1 id="view-title">今日学习</h1>
+      </div>
+      <div class="topbar-actions">
+        <div class="streak-pill" title="连续学习天数">
+          <i data-lucide="flame"></i><span id="streak-value">0</span> 天
+        </div>
+        <button class="reset-btn" id="reset-progress" title="清空本机学习记录">
+          <i data-lucide="rotate-ccw"></i>
+        </button>
+      </div>
+    </header>
+
+    <section class="view" id="view-root" aria-live="polite"></section>
+
+    <footer class="footer">
+      <span>IELTS Passport · 学习进度仅保存在本机浏览器</span>
+      <span id="footer-credit">题库：开放许可数据集</span>
+    </footer>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="vendor/lucide.min.js"></script>
+  <script src="data/learn.js"></script>
+  <script src="data/reading.js"></script>
+  <script src="data/listening.js"></script>
+  <script src="data/writing.js"></script>
+  <script src="data/speaking.js"></script>
+  <script src="data/sources.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

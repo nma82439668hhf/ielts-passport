@@ -1,0 +1,2 @@
+window.IELTS_BANK = window.IELTS_BANK || {};
+window.IELTS_BANK.sources = {"reading":"LuchoBazz/ielts-ai-dataset · CC BY 4.0","listening":"LuchoBazz/ielts-ai-dataset · CC BY 4.0","writing":"LuchoBazz/ielts-ai-dataset · CC BY 4.0","speaking":"qwertyuiopasdfg/IELTs-Speaking-answer · Apache 2.0"};
