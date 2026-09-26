@@ -120,6 +120,13 @@
     </div>
   </aside>
 
+  <div class="compat-audio-bar" id="compat-audio-bar" hidden>
+    <div class="compat-audio-info"><strong>兼容朗读</strong><span id="compat-audio-label">准备播放</span></div>
+    <audio id="compat-audio" controls preload="auto"></audio>
+    <a id="compat-audio-open" href="#" target="_blank" rel="noopener">新窗口播放</a>
+    <button class="compat-audio-close" id="compat-audio-close" aria-label="关闭播放器">×</button>
+  </div>
+
   <script src="vendor/lucide.min.js"></script>
   <script src="data/learn.js"></script>
   <script src="data/vocab-levels.js"></script>

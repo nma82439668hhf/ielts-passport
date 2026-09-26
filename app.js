@@ -243,6 +243,35 @@
     }
   }
 
+  function isLikelyMobileWebView() {
+    const ua = navigator.userAgent || "";
+    const android = /Android/i.test(ua);
+    const via = /Via/i.test(ua);
+    const webview = /; wv\)/i.test(ua) || /Version\/\d+\.\d+ Chrome/i.test(ua);
+    const noSpeech = !window.speechSynthesis;
+    return via || (android && (webview || noSpeech));
+  }
+
+  function autoEnableCompatIfNeeded() {
+    if (localStorage.getItem("ielts_tts_compat") !== null) return;
+    if (isLikelyMobileWebView()) {
+      state.ttsCompat = true;
+      saveTtsSettings();
+      window.setTimeout(() => toast("检测到手机浏览器，已自动开启兼容朗读"), 800);
+      return;
+    }
+    window.setTimeout(() => {
+      if (localStorage.getItem("ielts_tts_compat") !== null) return;
+      const voices = window.speechSynthesis && window.speechSynthesis.getVoices ? window.speechSynthesis.getVoices() : [];
+      if (!voices.length) {
+        state.ttsCompat = true;
+        saveTtsSettings();
+        const btn = $("#tts-compat");
+        if (btn) btn.classList.add("is-active");
+      }
+    }, 1600);
+  }
+
   function shuffle(arr) {
     const a = arr.slice();
     for (let i = a.length - 1; i > 0; i--) {
@@ -307,6 +336,8 @@
     if (window.speechSynthesis) window.speechSynthesis.cancel();
     ttsQueue = [];
     ttsOnEnd = null;
+    compatQueue = [];
+    compatOnEnd = null;
     if (activeAudio) {
       try {
         activeAudio.pause();
@@ -339,39 +370,71 @@
     return chunks;
   }
 
+  let compatQueue = [];
+  let compatOnEnd = null;
+  let compatAudioBound = false;
+
+  function bindCompatAudio() {
+    const audio = $("#compat-audio");
+    if (!audio || compatAudioBound) return;
+    compatAudioBound = true;
+    audio.addEventListener("ended", () => playCompatNext());
+    audio.addEventListener("error", () => playCompatNext());
+    audio.addEventListener("play", () => {
+      const label = $("#compat-audio-label");
+      if (label) label.textContent = "正在播放";
+    });
+  }
+
+  function showCompatBar() {
+    const bar = $("#compat-audio-bar");
+    if (bar) bar.hidden = false;
+    bindCompatAudio();
+  }
+
+  function playCompatNext() {
+    const audio = $("#compat-audio");
+    if (!audio) return;
+    if (!compatQueue.length) {
+      const callback = compatOnEnd;
+      compatOnEnd = null;
+      const label = $("#compat-audio-label");
+      if (label) label.textContent = "播放完成";
+      if (callback) callback();
+      return;
+    }
+    const item = compatQueue.shift();
+    showCompatBar();
+    activeAudio = audio;
+    audio.src = item.url;
+    const label = $("#compat-audio-label");
+    if (label) label.textContent = item.label || "正在播放";
+    const open = $("#compat-audio-open");
+    if (open) open.href = item.url;
+    audio.load();
+    const promise = audio.play();
+    if (promise && promise.catch) promise.catch(() => {
+      if (label) label.textContent = "浏览器拦截了自动播放，请点播放键";
+    });
+  }
+
+  function playCompatibleUrl(url, label, onEnd = null) {
+    stopSpeechAudio();
+    compatQueue = [{ url, label: label || "正在播放" }];
+    compatOnEnd = typeof onEnd === "function" ? onEnd : null;
+    playCompatNext();
+  }
+
   function playCompatibleTts(text, onEnd = null) {
     const chunks = splitTtsChunks(text);
     if (!chunks.length) return;
     stopSpeechAudio();
-    ttsQueue = chunks;
-    ttsOnEnd = typeof onEnd === "function" ? onEnd : null;
-    const playNext = () => {
-      if (!ttsQueue.length) {
-        const callback = ttsOnEnd;
-        ttsOnEnd = null;
-        if (callback) callback();
-        return;
-      }
-      const chunk = ttsQueue.shift();
-      const url = `https://fanyi.baidu.com/gettts?lan=en&text=${encodeURIComponent(chunk)}&spd=3&source=web`;
-      const audio = new Audio(url);
-      activeAudio = audio;
-      audio.onended = () => {
-        if (activeAudio === audio) activeAudio = null;
-        playNext();
-      };
-      audio.onerror = () => {
-        if (activeAudio === audio) activeAudio = null;
-        playNext();
-      };
-      const promise = audio.play();
-      if (promise && promise.catch) promise.catch(() => {
-        if (activeAudio === audio) activeAudio = null;
-        toast("浏览器拦截了自动朗读，请点消息旁的喇叭按钮");
-        playNext();
-      });
-    };
-    playNext();
+    compatQueue = chunks.map((chunk) => ({
+      url: `https://fanyi.baidu.com/gettts?lan=en&text=${encodeURIComponent(chunk)}&spd=3&source=web`,
+      label: "正在朗读英语",
+    }));
+    compatOnEnd = typeof onEnd === "function" ? onEnd : null;
+    playCompatNext();
   }
 
   function speakText(text, rate = 0.82, onEnd = null) {
@@ -420,6 +483,10 @@
     const unmark = () => {
       if (trigger) trigger.classList.remove("is-speaking");
     };
+    if (state.ttsCompat) {
+      playCompatibleUrl(wordAudioUrl(value), `单词：${value}`, unmark);
+      return;
+    }
     let usedFallback = false;
     const fallback = () => {
       if (usedFallback) return;
@@ -2387,7 +2454,15 @@
       state.ttsCompat = !state.ttsCompat;
       saveTtsSettings();
       $("#tts-compat").classList.toggle("is-active", state.ttsCompat);
+      if (!state.ttsCompat) {
+        stopSpeechAudio();
+        $("#compat-audio-bar").hidden = true;
+      }
       toast(state.ttsCompat ? "兼容朗读已开启，将使用在线 MP3 播放" : "兼容朗读已关闭，将优先使用系统语音");
+    });
+    $("#compat-audio-close").addEventListener("click", () => {
+      stopSpeechAudio();
+      $("#compat-audio-bar").hidden = true;
     });
     $("#pop-close").addEventListener("click", hideWordPopover);
     $("#pop-speak").addEventListener("click", () => speakWord(currentPopoverWord, $("#pop-speak")));
@@ -2433,6 +2508,7 @@
   function init() {
     loadAiSettings();
     loadTtsSettings();
+    autoEnableCompatIfNeeded();
     bindEvents();
     const ttsBtn = $("#tts-compat");
     if (ttsBtn) ttsBtn.classList.toggle("is-active", state.ttsCompat);
