@@ -5,6 +5,7 @@ const ROOT = path.resolve(__dirname, "..");
 const CEFR_DIR = process.env.CEFR_DIR ? path.resolve(process.env.CEFR_DIR) : path.join(ROOT, "work", "cefr-vocab");
 const ECDICT = process.env.ECDICT_PATH ? path.resolve(process.env.ECDICT_PATH) : path.join(ROOT, "work", "ecdict.csv");
 const SITE_DATA = process.env.SITE_DATA_DIR ? path.resolve(process.env.SITE_DATA_DIR) : path.join(ROOT, "site", "data");
+const EXAMPLES_PATH = process.env.EXAMPLES_PATH ? path.resolve(process.env.EXAMPLES_PATH) : path.join(ROOT, "work", "vocab-examples.json");
 const LEVELS = ["A1", "A2", "B1", "B2", "C1"];
 const LIMITS = { A1: 1092, A2: 1383, B1: 1800, B2: 1800, C1: 1026 };
 
@@ -161,6 +162,12 @@ function buildQuiz(level, entries) {
 }
 
 function main() {
+  let examples = {};
+  try {
+    examples = JSON.parse(fs.readFileSync(EXAMPLES_PATH, "utf8"));
+  } catch (e) {
+    examples = {};
+  }
   const targets = new Set();
   const levelWords = {};
   for (const level of LEVELS) {
@@ -196,6 +203,7 @@ function main() {
       pos: e.pos,
       zh: e.zh || "",
       en: e.en || "",
+      ex: examples[e.w] || "",
     }));
     quizTests.push(buildQuiz(level, entries));
   }

@@ -2372,12 +2372,17 @@
             <span class="flash-pos">${esc(state.vocabLevel)} ${card.pos ? "· " + esc(card.pos) : ""}</span>
             <div class="flash-word speakable" data-action="speak-word" data-word="${esc(card.w)}" title="点击听发音">${esc(card.w)} <i data-lucide="volume-2"></i></div>
             ${card.p ? `<div class="flash-phonetic">${esc(card.p)}</div>` : ""}
-            <div class="flash-zh">${esc(card.zh)}</div>
+            <div class="flash-front-hint">先回忆意思，再翻转查看释义和例句</div>
           </div>
           <div class="flash-face back">
+            <div class="flash-back-word">${esc(card.w)}</div>
+            ${card.p ? `<div class="flash-phonetic">${esc(card.p)}</div>` : ""}
+            <div class="flash-zh">${esc(card.zh)}</div>
+            <div class="flash-section-label">英文释义</div>
             <div class="flash-def">${wordify(card.en)}</div>
-            ${card.ex ? `<div class="flash-example">${esc(card.ex)}</div>` : ""}
-            ${card.exZh ? `<div class="flash-example-zh">${esc(card.exZh)}</div>` : ""}
+            <div class="flash-section-label">例句</div>
+            <div class="flash-example">${card.ex ? wordify(card.ex) : "暂无例句，可以点单词查词后自己造句。"}</div>
+            <div class="flash-example-tip">例句里的英文单词也可以点击查翻译</div>
           </div>
         </div>
         <div class="deck-actions">
@@ -2444,6 +2449,7 @@
             <tr><td>口语</td><td><code>${esc(sources.speaking)}</code></td><td>Apache 2.0</td></tr>
             <tr><td>分级词库</td><td><code>anig1scur/CEFR-Vocabulary-List</code></td><td>MIT</td></tr>
             <tr><td>中英释义</td><td><code>skywind3000/ECDICT</code></td><td>MIT</td></tr>
+            <tr><td>例句</td><td><code>Tatoeba</code></td><td>CC BY 2.0 FR</td></tr>
           </tbody>
         </table>
         <div class="vocab-update-box">

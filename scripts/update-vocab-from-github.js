@@ -7,6 +7,9 @@ const ROOT = path.resolve(__dirname, "..");
 const WORK = path.join(ROOT, "work");
 const CEFR_DIR = path.join(WORK, "cefr-vocab");
 const ECDICT_PATH = path.join(WORK, "ecdict.csv");
+const TATOEBA_ARCHIVE = path.join(WORK, "tatoeba", "eng_sentences.tsv.bz2");
+const TATOEBA_TSV = path.join(WORK, "tatoeba", "eng_sentences.tsv");
+const EXAMPLES_PATH = path.join(WORK, "vocab-examples.json");
 const SITE_DATA = process.env.SITE_DATA_DIR ? path.resolve(process.env.SITE_DATA_DIR) : path.join(ROOT, "site", "data");
 const LEVELS = ["A1", "A2", "B1", "B2", "C1"];
 
@@ -34,7 +37,7 @@ async function download(url, dest, retries = 3) {
   throw lastError;
 }
 
-function run(script) {
+function run(script, extraEnv = {}) {
   execFileSync(process.execPath, [script], {
     cwd: ROOT,
     stdio: "inherit",
@@ -43,6 +46,10 @@ function run(script) {
       SITE_DATA_DIR: SITE_DATA,
       CEFR_DIR,
       ECDICT_PATH,
+      EXAMPLES_PATH,
+      TATOEBA_FILE: TATOEBA_TSV,
+      VOCAB_FILE: path.join(SITE_DATA, "vocab-levels.js"),
+      ...extraEnv,
     },
   });
 }
@@ -69,6 +76,14 @@ function countVocab() {
   await download(`https://raw.githubusercontent.com/${SOURCES.ecdict}/master/ecdict.csv`, ECDICT_PATH);
   await download(`https://raw.githubusercontent.com/${SOURCES.ecdict}/master/LICENSE`, path.join(WORK, "ECDICT-LICENSE"));
 
+  if (!fs.existsSync(TATOEBA_TSV)) {
+    await download("https://downloads.tatoeba.org/exports/per_language/eng/eng_sentences.tsv.bz2", TATOEBA_ARCHIVE);
+    execFileSync("bzip2", ["-dc", TATOEBA_ARCHIVE], {
+      stdio: ["ignore", fs.openSync(TATOEBA_TSV, "w"), "inherit"],
+    });
+  }
+
+  run(path.join(__dirname, "build-vocab-examples.js"));
   run(path.join(__dirname, "build-vocab-levels.js"));
   run(path.join(__dirname, "build-dictionary.js"));
 

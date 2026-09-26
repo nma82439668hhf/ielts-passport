@@ -20,6 +20,7 @@ python -m http.server 8080
 - 口语：`qwertyuiopasdfg/IELTs-Speaking-answer`，许可 `Apache 2.0`
 - 分级词表：`anig1scur/CEFR-Vocabulary-List`，许可 `MIT`
 - 中英释义：`skywind3000/ECDICT`，许可 `MIT`
+- 例句：`Tatoeba`，许可 `CC BY 2.0 FR`
 
 ## 分级内容
 
