@@ -2,9 +2,15 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>IELTS Passport · 从零到雅思上岸</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#14211a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="IELTS Passport" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <meta name="description" content="面向英语新手的雅思学习与练习网站：学习地图、高频词汇、听力阅读写作口语题库与进度追踪。" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -53,6 +59,9 @@
       <button class="nav-item" data-view="ai">
         <i data-lucide="bot"></i><span>AI 英语对话</span>
       </button>
+      <button class="nav-item" data-view="account">
+        <i data-lucide="user-round"></i><span>账户与同步</span>
+      </button>
     </nav>
 
     <div class="sidebar-foot">
@@ -64,6 +73,9 @@
           <button id="target-plus" aria-label="提高目标分数"><i data-lucide="plus"></i></button>
         </div>
       </div>
+      <button class="install-btn" id="install-app" hidden>
+        <i data-lucide="download"></i><span>安装 App 版本</span>
+      </button>
       <button class="source-link" data-view="about">
         <i data-lucide="info"></i><span>题库来源与许可</span>
       </button>

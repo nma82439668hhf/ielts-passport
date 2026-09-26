@@ -3,6 +3,7 @@
 
   const BANK = window.IELTS_BANK || {};
   const STORAGE_KEY = "ielts_passport_v1";
+  let progressStorageKey = STORAGE_KEY;
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
@@ -15,6 +16,7 @@
     exam: "模拟考试",
     videos: "教学系列",
     ai: "AI 英语对话",
+    account: "账户与同步",
     session: "答题中",
     reading: "阅读练习",
     listening: "听力练习",
@@ -142,6 +144,7 @@
       lastScore: {},
       daily: { date: "", words: 0, questions: 0, minutes: 0, tests: 0, lastMilestone: 0, wordsSeen: [] },
       player: { xp: 0, level: 1, estimatedBand: 3.5, bestBand: 0, mockScores: [] },
+      profile: { displayName: "", email: "" },
     };
   }
 
@@ -177,6 +180,14 @@
       recognition: null,
       settings: { mode: "builtin", baseUrl: "https://api.openai.com/v1", apiKey: "", model: "gpt-4o-mini" },
     },
+    account: {
+      user: null,
+      mode: "guest",
+      cloud: { url: "", anonKey: "" },
+      syncStatus: "idle",
+      installPrompt: null,
+      formMode: "login",
+    },
   };
 
   const dictionaryShardPromises = new Map();
@@ -186,7 +197,7 @@
 
   function loadProgress() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(progressStorageKey);
       if (raw) {
         const parsed = JSON.parse(raw);
         const defaults = defaultProgress();
@@ -208,10 +219,11 @@
 
   function save() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.progress));
+      localStorage.setItem(progressStorageKey, JSON.stringify(state.progress));
     } catch (e) {
       /* storage full or unavailable */
     }
+    if (state.account && state.account.user && state.account.user.mode === "supabase") scheduleCloudSync();
   }
 
   function loadAiSettings() {
@@ -270,6 +282,240 @@
         if (btn) btn.classList.add("is-active");
       }
     }, 1600);
+  }
+
+  function loadAccountSession() {
+    try {
+      const raw = localStorage.getItem("ielts_account_session");
+      if (raw) state.account.user = JSON.parse(raw);
+    } catch (e) {
+      state.account.user = null;
+    }
+    try {
+      const cloud = localStorage.getItem("ielts_supabase_settings");
+      if (cloud) state.account.cloud = { ...state.account.cloud, ...JSON.parse(cloud) };
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  function saveAccountSession() {
+    try {
+      if (state.account.user) localStorage.setItem("ielts_account_session", JSON.stringify(state.account.user));
+      else localStorage.removeItem("ielts_account_session");
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  function saveCloudSettings() {
+    try {
+      localStorage.setItem("ielts_supabase_settings", JSON.stringify(state.account.cloud));
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  function accountProgressKey(user) {
+    if (!user) return STORAGE_KEY;
+    if (user.mode === "supabase") return `${STORAGE_KEY}:supabase:${user.id || user.email}`;
+    return `${STORAGE_KEY}:local:${user.email}`;
+  }
+
+  function switchAccountProgress(user, inheritGuest = false) {
+    const key = accountProgressKey(user);
+    if (inheritGuest && !user && state.progress) {
+      localStorage.setItem(key, JSON.stringify(state.progress));
+    }
+    if (inheritGuest && user && !localStorage.getItem(key)) {
+      localStorage.setItem(key, JSON.stringify(state.progress));
+    }
+    progressStorageKey = key;
+    state.progress = loadProgress();
+    if (user) {
+      state.progress.profile = state.progress.profile || { displayName: "", email: "" };
+      state.progress.profile.email = user.email || "";
+      if (user.name && !state.progress.profile.displayName) state.progress.profile.displayName = user.name;
+    }
+    save();
+  }
+
+  function localAccounts() {
+    try {
+      return JSON.parse(localStorage.getItem("ielts_local_accounts") || "{}");
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function saveLocalAccounts(accounts) {
+    localStorage.setItem("ielts_local_accounts", JSON.stringify(accounts));
+  }
+
+  function randomSalt() {
+    const bytes = new Uint8Array(16);
+    if (window.crypto && window.crypto.getRandomValues) window.crypto.getRandomValues(bytes);
+    else for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
+    return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  async function hashPassword(password, salt) {
+    const text = `${salt}:${password}`;
+    if (window.crypto && window.crypto.subtle && window.TextEncoder) {
+      const data = new TextEncoder().encode(text);
+      const digest = await window.crypto.subtle.digest("SHA-256", data);
+      return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+    }
+    let hash = 2166136261;
+    for (let i = 0; i < text.length; i += 1) {
+      hash ^= text.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return `fallback-${(hash >>> 0).toString(16)}`;
+  }
+
+  async function registerLocal(email, password, name) {
+    const accounts = localAccounts();
+    if (accounts[email]) {
+      toast("该邮箱已经注册，请直接登录");
+      return false;
+    }
+    const salt = randomSalt();
+    accounts[email] = { email, name: name || email.split("@")[0], salt, hash: await hashPassword(password, salt), createdAt: new Date().toISOString() };
+    saveLocalAccounts(accounts);
+    state.account.user = { mode: "local", email, name: accounts[email].name };
+    state.account.mode = "local";
+    saveAccountSession();
+    switchAccountProgress(state.account.user, true);
+    render();
+    toast("注册成功，学习记录已绑定到本机账户");
+    return true;
+  }
+
+  async function loginLocal(email, password) {
+    const account = localAccounts()[email];
+    if (!account) {
+      toast("没有找到这个本地账户，请先注册");
+      return false;
+    }
+    const hash = await hashPassword(password, account.salt);
+    if (hash !== account.hash) {
+      toast("密码不正确");
+      return false;
+    }
+    state.account.user = { mode: "local", email, name: account.name || email.split("@")[0] };
+    state.account.mode = "local";
+    saveAccountSession();
+    switchAccountProgress(state.account.user);
+    render();
+    toast("登录成功");
+    return true;
+  }
+
+  function logoutAccount() {
+    save();
+    state.account.user = null;
+    state.account.mode = "guest";
+    state.account.formMode = "login";
+    saveAccountSession();
+    switchAccountProgress(null);
+    render();
+    toast("已退出登录，当前使用访客进度");
+  }
+
+  async function supabaseSignUp(email, password) {
+    const { url, anonKey } = state.account.cloud;
+    if (!url || !anonKey) throw new Error("请先填写 Supabase URL 和 Anon Key");
+    const res = await fetch(`${url.replace(/\/$/, "")}/auth/v1/signup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: anonKey },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.msg || data.error_description || "注册失败");
+    if (!data.access_token) {
+      toast("注册成功，请到邮箱确认后再登录");
+      return false;
+    }
+    state.account.user = { mode: "supabase", id: data.user && data.user.id, email, name: email.split("@")[0], accessToken: data.access_token, refreshToken: data.refresh_token };
+    state.account.mode = "supabase";
+    saveAccountSession();
+    switchAccountProgress(state.account.user, true);
+    render();
+    toast("云端账户注册成功");
+    return true;
+  }
+
+  async function supabaseSignIn(email, password) {
+    const { url, anonKey } = state.account.cloud;
+    if (!url || !anonKey) throw new Error("请先填写 Supabase URL 和 Anon Key");
+    const res = await fetch(`${url.replace(/\/$/, "")}/auth/v1/token?grant_type=password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: anonKey },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.msg || data.error_description || "登录失败");
+    state.account.user = { mode: "supabase", id: data.user && data.user.id, email, name: (data.user && data.user.user_metadata && data.user.user_metadata.name) || email.split("@")[0], accessToken: data.access_token, refreshToken: data.refresh_token };
+    state.account.mode = "supabase";
+    saveAccountSession();
+    switchAccountProgress(state.account.user);
+    await loadProgressFromCloud();
+    render();
+    toast("云端账号登录成功");
+    return true;
+  }
+
+  async function supabaseUser() {
+    const user = state.account.user;
+    if (!user || user.mode !== "supabase" || !user.accessToken) throw new Error("请先登录云端账户");
+    const { url, anonKey } = state.account.cloud;
+    const res = await fetch(`${url.replace(/\/$/, "")}/auth/v1/user`, {
+      headers: { apikey: anonKey, Authorization: `Bearer ${user.accessToken}` },
+    });
+    if (!res.ok) throw new Error("云端账号状态已失效，请重新登录");
+    return res.json();
+  }
+
+  async function syncProgressToCloud(silent = false) {
+    try {
+      const cloudUser = await supabaseUser();
+      const { url, anonKey } = state.account.cloud;
+      const data = { ...(cloudUser.user_metadata || {}), ielts_passport_progress: state.progress };
+      const res = await fetch(`${url.replace(/\/$/, "")}/auth/v1/user`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", apikey: anonKey, Authorization: `Bearer ${state.account.user.accessToken}` },
+        body: JSON.stringify({ data }),
+      });
+      if (!res.ok) throw new Error("同步失败");
+      state.account.syncStatus = "synced";
+      if (!silent) toast("学习进度已同步到云端");
+      render();
+    } catch (e) {
+      state.account.syncStatus = "error";
+      if (!silent) toast(e.message);
+    }
+  }
+
+  async function loadProgressFromCloud() {
+    try {
+      const cloudUser = await supabaseUser();
+      const progress = cloudUser.user_metadata && cloudUser.user_metadata.ielts_passport_progress;
+      if (progress) {
+        state.progress = { ...defaultProgress(), ...progress };
+        save();
+        if (state.view === "account") render();
+      }
+    } catch (e) {
+      /* cloud progress is optional */
+    }
+  }
+
+  let cloudSyncTimer = null;
+  function scheduleCloudSync() {
+    if (!state.account.user || state.account.user.mode !== "supabase") return;
+    window.clearTimeout(cloudSyncTimer);
+    cloudSyncTimer = window.setTimeout(() => syncProgressToCloud(true), 1800);
   }
 
   function shuffle(arr) {
@@ -860,6 +1106,7 @@
       case "exam": html = renderExam(); break;
       case "videos": html = renderVideos(); break;
       case "ai": html = renderAiChat(); break;
+      case "account": html = renderAccount(); break;
       case "session": html = renderSession(); break;
       case "reading": html = renderReadingTest(state.param); break;
       case "listening": html = renderListeningTest(state.param); break;
@@ -1597,6 +1844,112 @@
       </div>`;
   }
 
+  function renderAccount() {
+    const user = state.account.user;
+    const cloud = state.account.cloud;
+    if (user) {
+      const initial = (state.progress.profile.displayName || user.email || "U").slice(0, 1).toUpperCase();
+      const totalQuestions = Object.values(state.progress.stats).reduce((n, s) => n + (s.attempted || 0), 0);
+      return `
+        <div class="section-head reveal"><div><h2>账户与同步</h2><p>当前学习进度绑定到你的账户，可以导出备份；云端账户可跨设备同步。</p></div><span class="tag ${user.mode === "supabase" ? "teal" : "gold"}">${user.mode === "supabase" ? "云端账户" : "本地账户"}</span></div>
+        <div class="account-layout">
+          <section class="panel account-card reveal">
+            <div class="account-profile"><div class="account-avatar">${esc(initial)}</div><div><h3>${esc(state.progress.profile.displayName || user.name || "学习者")}</h3><span>${esc(user.email)}</span></div></div>
+            <div class="account-stats">
+              <div><strong>Lv.${state.progress.player.level}</strong><span>玩家等级</span></div>
+              <div><strong>${state.progress.player.estimatedBand.toFixed(1)}</strong><span>预测 Band</span></div>
+              <div><strong>${ensureToday().words}</strong><span>今日单词</span></div>
+              <div><strong>${totalQuestions}</strong><span>累计做题</span></div>
+            </div>
+            <div class="account-actions">
+              <button class="btn teal" data-action="cloud-sync" ${user.mode === "supabase" ? "" : "disabled"}><i data-lucide="cloud-upload"></i>同步到云端</button>
+              <button class="btn ghost" data-action="export-progress"><i data-lucide="download"></i>导出学习进度</button>
+              <label class="btn ghost file-button"><i data-lucide="upload"></i>导入学习进度<input type="file" id="import-progress" accept="application/json" hidden /></label>
+              <button class="btn ghost" data-action="install-app"><i data-lucide="smartphone"></i>安装 App 版本</button>
+              <button class="btn ghost" data-action="logout-account"><i data-lucide="log-out"></i>退出登录</button>
+            </div>
+          </section>
+          <aside class="panel account-cloud reveal">
+            <h3>云端同步设置</h3>
+            <p>本地账户只保存在这台设备。要跨手机和电脑同步，请填写你的 Supabase 项目配置，然后使用云端邮箱账户登录。</p>
+            <label>Supabase URL<input id="supabase-url" value="${esc(cloud.url)}" placeholder="https://xxxx.supabase.co" /></label>
+            <label>Supabase Anon Key<input id="supabase-anon-key" type="password" value="${esc(cloud.anonKey)}" placeholder="eyJ..." /></label>
+            <button class="btn ghost" data-action="save-cloud-settings"><i data-lucide="save"></i>保存云端配置</button>
+            <p class="account-note">云端登录使用 Supabase 官方 Auth 接口，密码不会保存在本网站。当前账户类型：${user.mode === "supabase" ? "Supabase 云端" : "本机浏览器"}。</p>
+          </aside>
+        </div>`;
+    }
+    const mode = state.account.formMode;
+    return `
+      <div class="section-head reveal"><div><h2>邮箱注册登录</h2><p>本地账户立即使用；配置 Supabase 后可以跨设备登录并同步学习进度。</p></div><span class="tag gold">网页版 + App 版</span></div>
+      <div class="account-layout">
+        <section class="panel account-card reveal">
+          <div class="seg account-tabs"><button data-action="account-mode" data-mode="login" class="${mode === "login" ? "is-active" : ""}">登录</button><button data-action="account-mode" data-mode="register" class="${mode === "register" ? "is-active" : ""}">注册</button></div>
+          <form class="account-form" id="account-form">
+            ${mode === "register" ? `<label>昵称<input id="account-name" autocomplete="nickname" placeholder="例如：Wei" /></label>` : ""}
+            <label>邮箱<input id="account-email" type="email" autocomplete="email" placeholder="you@example.com" required /></label>
+            <label>密码<input id="account-password" type="password" autocomplete="${mode === "register" ? "new-password" : "current-password"}" placeholder="至少 6 位" required minlength="6" /></label>
+            <button class="btn primary" type="button" data-action="account-submit"><i data-lucide="${mode === "register" ? "user-plus" : "log-in"}"></i>${mode === "register" ? "注册本地账户" : "登录本地账户"}</button>
+          </form>
+          <p class="account-note">本地账户使用浏览器 localStorage 保存邮箱和加盐密码摘要，不会上传到服务器；换设备后请在右侧配置 Supabase 云端账户。</p>
+        </section>
+        <aside class="panel account-cloud reveal">
+          <h3>云端邮箱账户（可选）</h3>
+          <p>填写你的 Supabase 项目地址和 Anon Key。注册后 Supabase 可能要求邮箱确认，确认完成后即可跨设备同步。</p>
+          <label>Supabase URL<input id="supabase-url" value="${esc(cloud.url)}" placeholder="https://xxxx.supabase.co" /></label>
+          <label>Supabase Anon Key<input id="supabase-anon-key" type="password" value="${esc(cloud.anonKey)}" placeholder="eyJ..." /></label>
+          <button class="btn ghost" data-action="save-cloud-settings"><i data-lucide="save"></i>保存云端配置</button>
+          <button class="btn teal" data-action="cloud-signup"><i data-lucide="cloud"></i>云端邮箱注册</button>
+          <button class="btn ghost" data-action="cloud-signin"><i data-lucide="log-in"></i>云端邮箱登录</button>
+        </aside>
+      </div>`;
+  }
+
+  function exportProgress() {
+    const payload = JSON.stringify({ exportedAt: new Date().toISOString(), progress: state.progress }, null, 2);
+    const blob = new Blob([payload], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `ielts-passport-progress-${todayKey()}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function importProgressFile(file) {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (!data.progress) throw new Error("invalid file");
+      const defaults = defaultProgress();
+      state.progress = {
+        ...defaults,
+        ...data.progress,
+        stats: { ...defaults.stats, ...(data.progress.stats || {}) },
+        player: { ...defaults.player, ...(data.progress.player || {}) },
+        profile: { ...defaults.profile, ...(data.progress.profile || {}) },
+        daily: { ...defaults.daily, ...(data.progress.daily || {}) },
+        vocab: { ...defaults.vocab, ...(data.progress.vocab || {}) },
+      };
+      save();
+      render();
+      toast("学习进度导入成功");
+    } catch (e) {
+      toast("进度文件格式不正确");
+    }
+  }
+
+  async function installApp() {
+    if (state.account.installPrompt) {
+      state.account.installPrompt.prompt();
+      await state.account.installPrompt.userChoice;
+      state.account.installPrompt = null;
+      return;
+    }
+    toast("请用浏览器菜单选择“添加到主屏幕”或“安装应用”");
+  }
+
   function renderReadingTest(id) {
     const test = findTest("reading", id);
     if (!test) return `<div class="panel empty-state"><p>未找到该套题</p></div>`;
@@ -1974,7 +2327,7 @@
   }
 
   /* Interaction handlers */
-  function handleAction(e) {
+  async function handleAction(e) {
     const target = e.target.closest("[data-action]");
     if (!target) return;
     const action = target.dataset.action;
@@ -2009,6 +2362,64 @@
     }
     if (action === "check-vocab-update") {
       checkVocabUpdate();
+      return;
+    }
+    if (action === "account-mode") {
+      state.account.formMode = target.dataset.mode === "register" ? "register" : "login";
+      render();
+      return;
+    }
+    if (action === "account-submit") {
+      const email = ($("#account-email") ? $("#account-email").value : "").trim().toLowerCase();
+      const password = $("#account-password") ? $("#account-password").value : "";
+      const name = $("#account-name") ? $("#account-name").value.trim() : "";
+      if (!email || !password) {
+        toast("请填写邮箱和密码");
+        return;
+      }
+      if (state.account.formMode === "register") registerLocal(email, password, name);
+      else loginLocal(email, password);
+      return;
+    }
+    if (action === "save-cloud-settings") {
+      state.account.cloud.url = ($("#supabase-url") ? $("#supabase-url").value : "").trim();
+      state.account.cloud.anonKey = ($("#supabase-anon-key") ? $("#supabase-anon-key").value : "").trim();
+      saveCloudSettings();
+      toast("云端配置已保存在本机");
+      return;
+    }
+    if (action === "cloud-signup" || action === "cloud-signin") {
+      const email = ($("#account-email") ? $("#account-email").value : "").trim().toLowerCase();
+      const password = $("#account-password") ? $("#account-password").value : "";
+      if (!email || password.length < 6) {
+        toast("请填写邮箱和至少 6 位密码");
+        return;
+      }
+      state.account.cloud.url = ($("#supabase-url") ? $("#supabase-url").value : state.account.cloud.url).trim();
+      state.account.cloud.anonKey = ($("#supabase-anon-key") ? $("#supabase-anon-key").value : state.account.cloud.anonKey).trim();
+      saveCloudSettings();
+      try {
+        if (action === "cloud-signup") await supabaseSignUp(email, password);
+        else await supabaseSignIn(email, password);
+      } catch (e) {
+        toast(e.message || "云端账户操作失败");
+      }
+      return;
+    }
+    if (action === "logout-account") {
+      logoutAccount();
+      return;
+    }
+    if (action === "cloud-sync") {
+      syncProgressToCloud();
+      return;
+    }
+    if (action === "export-progress") {
+      exportProgress();
+      return;
+    }
+    if (action === "install-app") {
+      installApp();
       return;
     }
     if (action === "set-ai-scenario") {
@@ -2443,6 +2854,14 @@
         input.value = "";
         sendAiMessage(value);
       }
+      if ((e.target.id === "account-email" || e.target.id === "account-password" || e.target.id === "account-name") && e.key === "Enter") {
+        e.preventDefault();
+        const button = $("[data-action=account-submit]");
+        if (button) button.click();
+      }
+    });
+    $("#view-root").addEventListener("change", (e) => {
+      if (e.target.id === "import-progress" && e.target.files && e.target.files[0]) importProgressFile(e.target.files[0]);
     });
     $("#lookup-toggle").addEventListener("click", () => {
       state.lookupEnabled = !state.lookupEnabled;
@@ -2464,6 +2883,7 @@
       stopSpeechAudio();
       $("#compat-audio-bar").hidden = true;
     });
+    $("#install-app").addEventListener("click", installApp);
     $("#pop-close").addEventListener("click", hideWordPopover);
     $("#pop-speak").addEventListener("click", () => speakWord(currentPopoverWord, $("#pop-speak")));
     document.addEventListener("mousedown", (e) => {
@@ -2503,15 +2923,32 @@
         toast("学习记录已清空");
       }
     });
+    window.addEventListener("beforeinstallprompt", (e) => {
+      e.preventDefault();
+      state.account.installPrompt = e;
+      const button = $("#install-app");
+      if (button) button.hidden = false;
+    });
+    window.addEventListener("appinstalled", () => {
+      state.account.installPrompt = null;
+      const button = $("#install-app");
+      if (button) button.hidden = true;
+      toast("App 版本安装完成");
+    });
   }
 
   function init() {
     loadAiSettings();
     loadTtsSettings();
+    loadAccountSession();
+    if (state.account.user) switchAccountProgress(state.account.user);
     autoEnableCompatIfNeeded();
     bindEvents();
     const ttsBtn = $("#tts-compat");
     if (ttsBtn) ttsBtn.classList.toggle("is-active", state.ttsCompat);
+    if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
+      navigator.serviceWorker.register("sw.js").catch(() => {});
+    }
     renderTarget();
     render();
   }

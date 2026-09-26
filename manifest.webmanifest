@@ -1,0 +1,39 @@
+{
+  "name": "IELTS Passport",
+  "short_name": "IELTS Passport",
+  "description": "从零到雅思上岸的分级学习、题库练习、AI 英语对话与模拟考试。",
+  "lang": "zh-CN",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#eef3ef",
+  "theme_color": "#14211a",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["education", "productivity"],
+  "shortcuts": [
+    {
+      "name": "AI 英语对话",
+      "short_name": "AI 对话",
+      "url": "./?view=ai"
+    },
+    {
+      "name": "题库练习",
+      "short_name": "题库",
+      "url": "./?view=practice"
+    }
+  ]
+}
