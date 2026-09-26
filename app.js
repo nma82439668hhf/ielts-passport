@@ -2107,6 +2107,16 @@
     toast("请用浏览器菜单选择“添加到主屏幕”或“安装应用”");
   }
 
+  function openSupport() {
+    const modal = $("#support-modal");
+    if (modal) modal.hidden = false;
+  }
+
+  function closeSupport() {
+    const modal = $("#support-modal");
+    if (modal) modal.hidden = true;
+  }
+
   function renderReadingTest(id) {
     const test = findTest("reading", id);
     if (!test) return `<div class="panel empty-state"><p>未找到该套题</p></div>`;
@@ -2440,6 +2450,10 @@
           <div><strong>分级词库版本</strong><span>最近更新：${esc(updatedAt)} · GitHub Actions 每月自动检查一次</span></div>
           <button class="btn teal" data-action="check-vocab-update"><i data-lucide="refresh-cw"></i>检查 GitHub 更新</button>
         </div>
+        <div class="about-support">
+          <img src="assets/vega-support.jpg" alt="Vega 赞赏码" />
+          <div><strong>作者：Vega</strong><p>如果你觉得可以 可以支持一下我的作品。未经授权禁止外传，感谢支持。</p><button class="btn primary" data-action="open-support"><i data-lucide="heart"></i>打开赞赏码</button></div>
+        </div>
         <p style="margin-top:18px;color:var(--muted);font-size:12px">学习记录仅保存在你的浏览器 localStorage，不会上传到任何服务器。</p>
       </div>`;
   }
@@ -2590,6 +2604,10 @@
     }
     if (action === "install-app") {
       installApp();
+      return;
+    }
+    if (action === "open-support") {
+      openSupport();
       return;
     }
     if (action === "admin-toggle-login") {
@@ -3080,6 +3098,14 @@
       $("#compat-audio-bar").hidden = true;
     });
     $("#install-app").addEventListener("click", installApp);
+    $("#open-support").addEventListener("click", openSupport);
+    $("#support-close").addEventListener("click", closeSupport);
+    $("#support-modal").addEventListener("click", (e) => {
+      if (e.target.id === "support-modal") closeSupport();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closeSupport();
+    });
     $("#pop-close").addEventListener("click", hideWordPopover);
     $("#pop-speak").addEventListener("click", () => speakWord(currentPopoverWord, $("#pop-speak")));
     document.addEventListener("mousedown", (e) => {

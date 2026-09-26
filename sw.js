@@ -6,6 +6,7 @@ const APP_SHELL = [
   "./app.js",
   "./manifest.webmanifest",
   "./favicon.svg",
+  "./assets/vega-support.jpg",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
   "./vendor/lucide.min.js",

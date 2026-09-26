@@ -3082,6 +3082,131 @@ button {
   }
 }
 
+.footer-support-btn {
+  padding: 0;
+  color: var(--teal-deep);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.footer-support-btn:hover {
+  text-decoration: underline;
+}
+
+.support-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(20, 33, 26, 0.58);
+  backdrop-filter: blur(12px) saturate(140%);
+}
+
+.support-modal[hidden] {
+  display: none;
+}
+
+.support-modal-card {
+  position: relative;
+  width: min(420px, calc(100vw - 28px));
+  padding: 24px;
+  color: var(--ink);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 247, 0.88));
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  border-radius: 26px;
+  box-shadow: 0 28px 80px rgba(20, 33, 26, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  text-align: center;
+}
+
+.support-modal-card h2 {
+  margin: 8px 0 16px;
+  font-family: var(--font-display);
+  font-size: 23px;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.support-modal-card img {
+  display: block;
+  width: min(300px, 100%);
+  height: auto;
+  margin: 0 auto;
+  border-radius: 18px;
+  box-shadow: 0 14px 36px rgba(20, 33, 26, 0.14);
+}
+
+.support-modal-card p {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.support-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  color: var(--muted);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 20px;
+}
+
+.about-support {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 18px;
+  align-items: center;
+  margin-top: 18px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  backdrop-filter: blur(14px) saturate(150%);
+}
+
+.about-support img {
+  display: block;
+  width: 150px;
+  height: auto;
+  border-radius: 14px;
+}
+
+.about-support strong {
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 900;
+}
+
+.about-support p {
+  margin: 6px 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+@media (max-width: 760px) {
+  .about-support {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+
+  .about-support img {
+    margin: 0 auto;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

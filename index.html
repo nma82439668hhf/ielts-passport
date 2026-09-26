@@ -12,6 +12,7 @@
   <meta name="apple-mobile-web-app-title" content="IELTS Passport" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <meta name="description" content="面向英语新手的雅思学习与练习网站：学习地图、高频词汇、听力阅读写作口语题库与进度追踪。" />
+  <meta name="author" content="Vega" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,900&family=Sora:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -110,7 +111,8 @@
     <section class="view" id="view-root" aria-live="polite"></section>
 
     <footer class="footer">
-      <span>IELTS Passport · 学习进度仅保存在本机浏览器</span>
+      <span>作者：Vega · 未经授权禁止外传</span>
+      <button class="footer-support-btn" id="open-support">如果你觉得可以 可以支持一下我的作品</button>
       <span id="footer-credit">题库：开放许可数据集</span>
     </footer>
   </main>
@@ -137,6 +139,16 @@
     <audio id="compat-audio" controls preload="auto"></audio>
     <a id="compat-audio-open" href="#" target="_blank" rel="noopener">新窗口播放</a>
     <button class="compat-audio-close" id="compat-audio-close" aria-label="关闭播放器">×</button>
+  </div>
+
+  <div class="support-modal" id="support-modal" hidden>
+    <div class="support-modal-card" role="dialog" aria-modal="true" aria-labelledby="support-title">
+      <button class="support-close" id="support-close" aria-label="关闭赞赏">×</button>
+      <span class="eyebrow">SUPPORT THE AUTHOR</span>
+      <h2 id="support-title">如果你觉得可以 可以支持一下我的作品</h2>
+      <img src="assets/vega-support.jpg" alt="Vega 赞赏码" />
+      <p>感谢支持 · 作者：Vega · 未经授权禁止外传</p>
+    </div>
   </div>
 
   <script src="vendor/lucide.min.js"></script>
