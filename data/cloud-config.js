@@ -1,6 +1,4 @@
 window.IELTS_CLOUD_CONFIG = {
-  // Supabase 项目 URL，例如 https://xxxx.supabase.co
-  url: "",
-  // Supabase 的公开 anon key。anon key 可以放在网页中，绝不能填写 service_role key。
-  anonKey: ""
+  url: "https://bmhtjeotfxtvmvfelmkv.supabase.co",
+  anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJtaHRqZW90Znh0dm12ZmVsbWt2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA0MDc2OTEsImV4cCI6MjEwNTk4MzY5MX0.-yGM2vXATzuuNuo2JQeXXV1xwpW8ACylzWBKKyzStoE"
 };

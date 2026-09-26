@@ -1,1 +1,1 @@
-window.IELTS_REMOTE_VERSION = {"webVersion":"1.0.5","releasedAt":"2026-09-26T07:50:56.771Z","siteUrl":"https://nma82439668hhf.github.io/ielts-passport/"};
+window.IELTS_REMOTE_VERSION = {"webVersion":"1.0.6","releasedAt":"2026-09-26T08:47:04.559Z","siteUrl":"https://nma82439668hhf.github.io/ielts-passport/"};
