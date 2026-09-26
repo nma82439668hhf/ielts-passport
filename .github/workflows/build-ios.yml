@@ -1,0 +1,40 @@
+name: Build iOS app
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install dependencies and generate iOS project
+        run: |
+          pnpm --dir apps/mobile install --no-frozen-lockfile
+          pnpm --dir apps/mobile prepare:web
+          cd apps/mobile
+          pnpm exec cap add ios
+      - name: Build unsigned iOS app
+        run: |
+          cd apps/mobile/ios/App
+          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -sdk iphoneos -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/App.app Payload/
+          zip -qr IELTS-Passport-unsigned.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-unsigned-ipa
+          path: apps/mobile/ios/App/IELTS-Passport-unsigned.ipa
+          if-no-files-found: error

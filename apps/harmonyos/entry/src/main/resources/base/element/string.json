@@ -1,0 +1,8 @@
+{
+  "string": [
+    { "name": "app_name", "value": "IELTS Passport" },
+    { "name": "module_desc", "value": "IELTS learning application" },
+    { "name": "EntryAbility_desc", "value": "IELTS Passport main ability" },
+    { "name": "EntryAbility_label", "value": "IELTS Passport" }
+  ]
+}

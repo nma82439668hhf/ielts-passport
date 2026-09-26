@@ -1,0 +1,64 @@
+{
+  "name": "ielts-passport-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "IELTS Passport desktop application",
+  "author": "IELTS Passport",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "sync:site": "node scripts/sync-site.mjs",
+    "dist:win": "pnpm sync:site && electron-builder --win nsis",
+    "dist:mac": "pnpm sync:site && electron-builder --mac dmg",
+    "dist:linux": "pnpm sync:site && electron-builder --linux AppImage"
+  },
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["electron", "esbuild"]
+  },
+  "build": {
+    "appId": "com.ieltspassport.app",
+    "productName": "IELTS Passport",
+    "asar": true,
+    "files": [
+      "main.js",
+      "preload.js",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "web",
+        "to": "site",
+        "filter": ["**/*"]
+      }
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "win": {
+      "target": ["nsis"],
+      "icon": "build/icon.png",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "mac": {
+      "target": ["dmg"],
+      "category": "public.app-category.education",
+      "icon": "build/icon.png"
+    },
+    "linux": {
+      "target": ["AppImage"],
+      "category": "Education",
+      "icon": "build/icon.png"
+    }
+  }
+}

@@ -1,0 +1,22 @@
+name: Package HarmonyOS source
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package DevEco Studio project
+        run: |
+          cd apps
+          zip -qr IELTS-Passport-HarmonyOS-source.zip harmonyos
+      - uses: actions/upload-artifact@v4
+        with:
+          name: harmonyos-deveco-project
+          path: apps/IELTS-Passport-HarmonyOS-source.zip
+          if-no-files-found: error
