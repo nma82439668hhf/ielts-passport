@@ -1053,6 +1053,24 @@ button {
   font-weight: 900;
 }
 
+.passage-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.passage-title-row h3 {
+  flex: 1;
+}
+
+.passage-title-row .btn {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 5px 10px;
+  font-size: 11px;
+}
+
 .passage-text {
   font-family: var(--font-body);
   font-size: 14px;

@@ -51,3 +51,5 @@ python -m http.server 8080
 仓库可部署到 GitHub Pages，站点文件位于仓库根目录。
 
 AI 对话页默认使用内置陪练，不需要 API Key。需要更强对话能力时，可以在页面右侧填写 OpenAI 兼容 API 的 Base URL、模型名和 Key；Key 只保存在当前浏览器 localStorage。
+
+顶部“兼容朗读”开关用于 Via 等不支持系统语音合成的浏览器。开启后会改用在线 MP3 分段播放，词汇、阅读原文、听力原文和 AI 回复都可以朗读。

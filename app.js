@@ -160,6 +160,7 @@
     speakingLevel: "A1",
     writingTaskIndex: 0,
     lookupEnabled: true,
+    ttsCompat: false,
     challengeLevel: "A1",
     examLevel: "A1",
     session: null,
@@ -228,6 +229,18 @@
     }
   }
 
+  function loadTtsSettings() {
+    state.ttsCompat = localStorage.getItem("ielts_tts_compat") === "1";
+  }
+
+  function saveTtsSettings() {
+    try {
+      localStorage.setItem("ielts_tts_compat", state.ttsCompat ? "1" : "0");
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
   function shuffle(arr) {
     const a = arr.slice();
     for (let i = a.length - 1; i > 0; i--) {
@@ -253,6 +266,8 @@
   let activeAudio = null;
   let activeUtterance = null;
   const audioCache = new Map();
+  let ttsQueue = [];
+  let ttsOnEnd = null;
 
   function wordAudioUrl(word) {
     return `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(word)}&type=2`;
@@ -288,6 +303,8 @@
 
   function stopSpeechAudio() {
     if (window.speechSynthesis) window.speechSynthesis.cancel();
+    ttsQueue = [];
+    ttsOnEnd = null;
     if (activeAudio) {
       try {
         activeAudio.pause();
@@ -300,16 +317,83 @@
     activeUtterance = null;
   }
 
+  function splitTtsChunks(text) {
+    const value = String(text || "").replace(/\s+/g, " ").trim();
+    if (!value) return [];
+    const sentences = value.match(/[^.!?]+[.!?]?/g) || [value];
+    const chunks = [];
+    let current = "";
+    sentences.forEach((sentence) => {
+      const part = sentence.trim();
+      if (!part) return;
+      if (current && current.length + part.length > 220) {
+        chunks.push(current);
+        current = part;
+      } else {
+        current = current ? `${current} ${part}` : part;
+      }
+    });
+    if (current) chunks.push(current);
+    return chunks;
+  }
+
+  function playCompatibleTts(text, onEnd = null) {
+    const chunks = splitTtsChunks(text);
+    if (!chunks.length) return;
+    stopSpeechAudio();
+    ttsQueue = chunks;
+    ttsOnEnd = typeof onEnd === "function" ? onEnd : null;
+    const playNext = () => {
+      if (!ttsQueue.length) {
+        const callback = ttsOnEnd;
+        ttsOnEnd = null;
+        if (callback) callback();
+        return;
+      }
+      const chunk = ttsQueue.shift();
+      const url = `https://fanyi.baidu.com/gettts?lan=en&text=${encodeURIComponent(chunk)}&spd=3&source=web`;
+      const audio = new Audio(url);
+      activeAudio = audio;
+      audio.onended = () => {
+        if (activeAudio === audio) activeAudio = null;
+        playNext();
+      };
+      audio.onerror = () => {
+        if (activeAudio === audio) activeAudio = null;
+        playNext();
+      };
+      const promise = audio.play();
+      if (promise && promise.catch) promise.catch(() => {
+        if (activeAudio === audio) activeAudio = null;
+        toast("浏览器拦截了自动朗读，请点消息旁的喇叭按钮");
+        playNext();
+      });
+    };
+    playNext();
+  }
+
   function speakText(text, rate = 0.82, onEnd = null) {
     const value = String(text || "").trim();
     if (!value) return;
     stopSpeechAudio();
-    if (!window.speechSynthesis || !window.SpeechSynthesisUtterance) {
-      toast("当前浏览器不支持朗读，请使用 Edge 或 Chrome");
+    if (state.ttsCompat || !window.speechSynthesis || !window.SpeechSynthesisUtterance) {
+      playCompatibleTts(value, onEnd);
       return;
     }
     const utter = new SpeechSynthesisUtterance(value);
     activeUtterance = utter;
+    let started = false;
+    let fallbackTimer = null;
+    const fallback = () => {
+      if (started) return;
+      started = true;
+      if (fallbackTimer) window.clearTimeout(fallbackTimer);
+      try { window.speechSynthesis.cancel(); } catch (e) { /* ignore */ }
+      activeUtterance = null;
+      playCompatibleTts(value, onEnd);
+    };
+    utter.onstart = () => { started = true; if (fallbackTimer) window.clearTimeout(fallbackTimer); };
+    utter.onerror = fallback;
     if (typeof onEnd === "function") utter.onend = onEnd;
     utter.lang = "en-US";
     utter.rate = rate;
@@ -321,8 +405,9 @@
       window.speechSynthesis.resume();
       window.speechSynthesis.speak(utter);
     } catch (e) {
-      toast("语音播放失败，请再试一次");
+      fallback();
     }
+    fallbackTimer = window.setTimeout(() => { if (!started) fallback(); }, 750);
   }
 
   function speakWord(word, trigger) {
@@ -1410,7 +1495,7 @@
           <label>模型<input id="ai-model" value="${esc(s.model)}" placeholder="gpt-4o-mini" /></label>
           <label>API Key<input id="ai-key" type="password" value="${esc(s.apiKey)}" placeholder="只保存在本机浏览器" /></label>
           <button class="btn teal" data-action="save-ai-settings"><i data-lucide="save"></i>保存 AI 设置</button>
-          <p>不填 Key 时使用内置陪练，仍然支持实时语音输入和语音回复。自定义模型需要接口允许浏览器跨域访问。</p>
+          <p>不填 Key 时使用内置陪练，仍然支持实时语音输入和语音回复。自定义模型需要接口允许浏览器跨域访问。Via 等不支持系统语音的浏览器，请打开顶部“兼容朗读”。</p>
         </aside>
       </div>`;
   }
@@ -1420,11 +1505,12 @@
     if (!test) return `<div class="panel empty-state"><p>未找到该套题</p></div>`;
     state.currentTest = { skill: "reading", id };
     state.currentTest.checked = false;
+    state.currentTest.passages = test.passages;
     state.answerMap = {};
 
     const passageHtml = test.passages.map((p, pi) => `
       <div style="margin-bottom:24px">
-        <h3>Passage ${p.number} · ${esc(p.title)}</h3>
+        <div class="passage-title-row"><h3>Passage ${p.number} · ${esc(p.title)}</h3><button class="btn ghost" data-action="speak-reading-passage" data-index="${pi}"><i data-lucide="volume-2"></i>朗读本段</button></div>
         <div class="passage-text">${wordify(p.content)}</div>
       </div>`).join("");
 
@@ -1878,6 +1964,14 @@
       toast("AI 设置已保存在本机");
       return;
     }
+    if (action === "toggle-tts-compat") {
+      state.ttsCompat = !state.ttsCompat;
+      saveTtsSettings();
+      const btn = $("#tts-compat");
+      if (btn) btn.classList.toggle("is-active", state.ttsCompat);
+      toast(state.ttsCompat ? "兼容朗读已开启，将使用在线 MP3 播放" : "兼容朗读已关闭，将优先使用系统语音");
+      return;
+    }
     if (action === "start-challenge") {
       startSession("challenge", target.dataset.type, target.dataset.level || state.challengeLevel);
       return;
@@ -1923,6 +2017,12 @@
     if (action === "speak-transcript") {
       const t = $("#listen-section .transcript");
       if (t) speakText(t.textContent, 0.82);
+      return;
+    }
+    if (action === "speak-reading-passage") {
+      const index = Number(target.dataset.index);
+      const passage = state.currentTest && state.currentTest.passages ? state.currentTest.passages[index] : null;
+      if (passage) speakText(passage.content, 0.82);
       return;
     }
     if (action === "writing-task") {
@@ -2239,6 +2339,12 @@
       toast(state.lookupEnabled ? "点词讲解已开启" : "点词讲解已关闭");
       if (!state.lookupEnabled) hideWordPopover();
     });
+    $("#tts-compat").addEventListener("click", () => {
+      state.ttsCompat = !state.ttsCompat;
+      saveTtsSettings();
+      $("#tts-compat").classList.toggle("is-active", state.ttsCompat);
+      toast(state.ttsCompat ? "兼容朗读已开启，将使用在线 MP3 播放" : "兼容朗读已关闭，将优先使用系统语音");
+    });
     $("#pop-close").addEventListener("click", hideWordPopover);
     $("#pop-speak").addEventListener("click", () => speakWord(currentPopoverWord, $("#pop-speak")));
     document.addEventListener("mousedown", (e) => {
@@ -2282,7 +2388,10 @@
 
   function init() {
     loadAiSettings();
+    loadTtsSettings();
     bindEvents();
+    const ttsBtn = $("#tts-compat");
+    if (ttsBtn) ttsBtn.classList.toggle("is-active", state.ttsCompat);
     renderTarget();
     render();
   }
