@@ -1847,6 +1847,7 @@
   function renderAccount() {
     const user = state.account.user;
     const cloud = state.account.cloud;
+    const downloads = renderAppDownloads();
     if (user) {
       const initial = (state.progress.profile.displayName || user.email || "U").slice(0, 1).toUpperCase();
       const totalQuestions = Object.values(state.progress.stats).reduce((n, s) => n + (s.attempted || 0), 0);
@@ -1877,7 +1878,8 @@
             <button class="btn ghost" data-action="save-cloud-settings"><i data-lucide="save"></i>保存云端配置</button>
             <p class="account-note">云端登录使用 Supabase 官方 Auth 接口，密码不会保存在本网站。当前账户类型：${user.mode === "supabase" ? "Supabase 云端" : "本机浏览器"}。</p>
           </aside>
-        </div>`;
+        </div>
+        ${downloads}`;
     }
     const mode = state.account.formMode;
     return `
@@ -1902,7 +1904,27 @@
           <button class="btn teal" data-action="cloud-signup"><i data-lucide="cloud"></i>云端邮箱注册</button>
           <button class="btn ghost" data-action="cloud-signin"><i data-lucide="log-in"></i>云端邮箱登录</button>
         </aside>
-      </div>`;
+      </div>
+      ${downloads}`;
+  }
+
+  function renderAppDownloads() {
+    const base = "https://github.com/nma82439668hhf/ielts-passport/releases/latest/download";
+    const items = [
+      { name: "Windows", file: "IELTS-Passport-Windows-Setup-1.0.0.exe", icon: "monitor", note: "NSIS 安装版，未签名" },
+      { name: "macOS", file: "IELTS-Passport-macOS-arm64-1.0.0.dmg", icon: "laptop", note: "Apple 芯片 DMG，未签名" },
+      { name: "Linux", file: "IELTS-Passport-Linux-1.0.0.AppImage", icon: "terminal", note: "AppImage，免安装" },
+      { name: "Android", file: "IELTS-Passport-Android-Debug-1.0.0.apk", icon: "smartphone", note: "Debug APK，可直接安装" },
+      { name: "iOS", file: "IELTS-Passport-iOS-Unsigned-1.0.0.ipa", icon: "apple", note: "未签名 IPA，需要 Apple 证书" },
+    ];
+    return `
+      <section class="app-download-section reveal">
+        <div class="section-head"><div><h2>下载 App 安装包</h2><p>网页版和 PWA 会自动更新；原生安装包来自 GitHub Release。</p></div></div>
+        <div class="download-grid">
+          ${items.map((item) => `<a class="download-card" href="${base}/${item.file}" target="_blank" rel="noopener"><div class="download-icon"><i data-lucide="${item.icon}"></i></div><strong>${esc(item.name)}</strong><span>${esc(item.note)}</span><b>下载安装包</b></a>`).join("")}
+          <button class="download-card" data-action="install-app"><div class="download-icon"><i data-lucide="globe"></i></div><strong>PWA / 网页版</strong><span>无需安装包，添加到主屏幕即可</span><b>安装 PWA</b></button>
+        </div>
+      </section>`;
   }
 
   function exportProgress() {
