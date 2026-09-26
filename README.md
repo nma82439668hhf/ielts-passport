@@ -66,6 +66,15 @@ python -m http.server 8080
 
 > 本地账户保存在当前浏览器中，管理员判断也基于邮箱匹配。需要跨设备、防篡改的管理员权限时，应使用 Supabase Auth 的邮箱验证和服务端角色表。
 
+## 云端更新与混合模式
+
+- 网页版直接使用 GitHub Pages 最新代码。
+- PWA 使用 Service Worker 更新缓存，支持离线回退。
+- Electron 桌面版和 Capacitor Android/iOS 内置离线网页包；启动后检查云端 `data/remote-version.js`。
+- 如果云端版本更高，App 自动切换到 GitHub Pages 最新版；离线或网络失败时继续使用内置版本。
+- App 账户页提供“检查 App 云端更新”按钮。
+- 发版时运行 `node tools/set-version.js 1.0.2`，然后触发桌面、Android、iOS 构建工作流。CI 会自动创建对应版本 Release 并上传安装包。
+
 AI 对话页默认使用内置陪练，不需要 API Key。需要更强对话能力时，可以在页面右侧填写 OpenAI 兼容 API 的 Base URL、模型名和 Key；Key 只保存在当前浏览器 localStorage。
 
 顶部“兼容朗读”开关用于 Via 等不支持系统语音合成的浏览器。开启后会改用在线 MP3 分段播放，词汇、阅读原文、听力原文和 AI 回复都可以朗读。
