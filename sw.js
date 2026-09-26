@@ -1,4 +1,4 @@
-const CACHE_NAME = "ielts-passport-v4";
+const CACHE_NAME = "ielts-passport-v5";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -58,7 +58,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  const networkFirst = request.mode === "navigate" || /(?:app\.js|styles\.css|index\.html|manifest\.webmanifest|sw\.js)$/.test(url.pathname);
+  const networkFirst = request.mode === "navigate" || /(?:app\.js|styles\.css|index\.html|manifest\.webmanifest|sw\.js|data\/cloud-config\.js)$/.test(url.pathname);
   if (networkFirst) {
     event.respondWith(
       fetch(request).then((response) => {
