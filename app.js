@@ -13,7 +13,7 @@
     practice: "题库练习",
     challenges: "题型挑战",
     exam: "模拟考试",
-    videos: "精选视频",
+    videos: "教学系列",
     ai: "AI 英语对话",
     session: "答题中",
     reading: "阅读练习",
