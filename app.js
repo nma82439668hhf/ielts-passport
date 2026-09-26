@@ -172,6 +172,8 @@
       thinking: false,
       listening: false,
       autoMode: false,
+      status: "idle",
+      recognitionPaused: false,
       recognition: null,
       settings: { mode: "builtin", baseUrl: "https://api.openai.com/v1", apiKey: "", model: "gpt-4o-mini" },
     },
@@ -1361,12 +1363,19 @@
   async function sendAiMessage(text) {
     const value = String(text || "").trim();
     if (!value || state.ai.thinking) return;
+    if (state.ai.recognition && state.ai.listening) {
+      state.ai.recognitionPaused = true;
+      try { state.ai.recognition.stop(); } catch (e) { /* ignore */ }
+      state.ai.listening = false;
+    }
     state.ai.messages.push({ role: "user", text: value, feedback: "" });
     state.ai.thinking = true;
+    state.ai.status = "thinking";
     render();
     const result = await getAiReply(value);
     state.ai.messages.push({ role: "ai", text: result.reply, feedback: result.feedback || "" });
     state.ai.thinking = false;
+    state.ai.status = "speaking";
     recordDailyQuestions(1);
     addXp(5);
     render();
@@ -1374,7 +1383,12 @@
   }
 
   function speakAiReply(text) {
+    state.ai.status = "speaking";
+    updateAiStatus();
     speakText(text, 0.82, () => {
+      state.ai.status = "idle";
+      state.ai.recognitionPaused = false;
+      updateAiStatus();
       if (state.ai.autoMode) startAiListening();
     });
   }
@@ -1382,9 +1396,13 @@
   function updateAiStatus() {
     const el = $("#ai-status");
     if (!el) return;
-    if (state.ai.listening) el.textContent = "正在听你说英语…";
-    else if (state.ai.thinking) el.textContent = "AI 正在回复…";
-    else el.textContent = state.ai.autoMode ? "自动对话已开启，点麦克风开始" : "点麦克风开始实时英语对话";
+    const labels = {
+      listening: "正在听你说英语…",
+      thinking: "AI 正在回复…",
+      speaking: "AI 正在说话，麦克风已暂停…",
+      idle: state.ai.autoMode ? "实时对话已就绪，说完 AI 会自动接话" : "点麦克风或开始实时语音对话",
+    };
+    el.textContent = labels[state.ai.status] || labels.idle;
   }
 
   function startAiListening() {
@@ -1412,21 +1430,26 @@
       };
       recognition.onerror = () => {
         state.ai.listening = false;
+        state.ai.status = "idle";
         updateAiStatus();
       };
       recognition.onend = () => {
         state.ai.listening = false;
+        if (state.ai.status === "listening") state.ai.status = "idle";
         updateAiStatus();
-        if (state.ai.autoMode && !state.ai.thinking) window.setTimeout(startAiListening, 450);
+        if (state.ai.autoMode && !state.ai.thinking && !state.ai.recognitionPaused) window.setTimeout(startAiListening, 450);
       };
       state.ai.recognition = recognition;
     }
     try {
+      state.ai.recognitionPaused = false;
       state.ai.listening = true;
+      state.ai.status = "listening";
       state.ai.recognition.start();
       updateAiStatus();
     } catch (e) {
       state.ai.listening = false;
+      state.ai.status = "idle";
       updateAiStatus();
     }
   }
@@ -1437,6 +1460,7 @@
       try { state.ai.recognition.stop(); } catch (e) { /* ignore */ }
     }
     state.ai.listening = false;
+    state.ai.status = "idle";
     updateAiStatus();
   }
 
@@ -1468,20 +1492,26 @@
     const scenarios = Object.entries(AI_SCENARIOS).map(([id, s]) => `<button class="ai-scenario ${state.ai.scenario === id ? "is-active" : ""}" data-action="set-ai-scenario" data-id="${id}"><strong>${esc(s.title)}</strong><span>${esc(s.level)} · ${esc(s.en)}</span></button>`).join("")
       + `<button class="ai-scenario ${state.ai.scenario === "free" ? "is-active" : ""}" data-action="set-ai-scenario" data-id="free"><strong>自由对话</strong><span>随机话题 · Free talk</span></button>`;
     const s = state.ai.settings;
+    const speechSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+    const statusLabel = state.ai.status === "listening" ? "Listening" : state.ai.status === "thinking" ? "Thinking" : state.ai.status === "speaking" ? "Speaking" : state.ai.autoMode ? "Realtime on" : "Ready";
     return `
-      <div class="section-head reveal"><div><h2>AI 英语对话</h2><p>用麦克风实时说英语，AI 会用语音回复并给出简单纠错。也可以直接打字。</p></div><span class="tag teal">浏览器实时语音</span></div>
+      <div class="section-head reveal"><div><h2>AI 英语对话</h2><p>一键开始实时语音对话：你说英语 → AI 语音回复 → 自动继续听你说。首次使用需要允许麦克风。</p></div><span class="tag teal">实时语音陪练</span></div>
       <div class="ai-scenario-grid reveal">${scenarios}</div>
       <div class="ai-layout">
         <section class="panel ai-chat-card reveal">
-          <div class="ai-chat-head"><div><strong>${esc(scenario ? scenario.title : "自由对话")}</strong><span>${esc(scenario ? scenario.goal : "练习自由表达，AI 会继续追问。")}</span></div><span class="tag ${state.ai.listening ? "red" : "teal"}">${state.ai.listening ? "Listening" : "Ready"}</span></div>
+          <div class="ai-chat-head"><div><strong>${esc(scenario ? scenario.title : "自由对话")}</strong><span>${esc(scenario ? scenario.goal : "练习自由表达，AI 会继续追问。")}</span></div><span class="tag ${state.ai.listening || state.ai.status === "speaking" ? "red" : "teal"}">${statusLabel}</span></div>
           <div class="ai-messages" id="ai-messages">${messages}${state.ai.thinking ? `<div class="ai-message ai"><div class="ai-avatar">AI</div><div class="ai-bubble"><span class="typing-dots">正在输入</span></div></div>` : ""}</div>
           <div class="ai-live" id="ai-live-text"></div>
+          ${speechSupported ? "" : `<div class="ai-warning">当前浏览器不支持实时语音识别。可以继续用文字对话，或使用最新版 Edge / Chrome 开启实时语音。</div>`}
           <div class="ai-input-row">
             <button class="ai-mic ${state.ai.listening ? "is-listening" : ""}" id="ai-mic" data-action="ai-toggle-mic" title="开始/停止语音输入"><i data-lucide="mic"></i></button>
             <input id="ai-input" type="text" placeholder="Type in English, or click the microphone..." autocomplete="off" />
             <button class="btn primary" data-action="ai-send"><i data-lucide="send"></i></button>
           </div>
           <div class="ai-actions">
+            ${state.ai.autoMode || state.ai.listening
+              ? `<button class="btn primary" data-action="ai-stop-realtime"><i data-lucide="square"></i>停止实时对话</button>`
+              : `<button class="btn primary" data-action="ai-start-realtime" ${speechSupported ? "" : "disabled"}><i data-lucide="radio"></i>开始实时语音对话</button>`}
             <button class="btn ghost" data-action="ai-hint"><i data-lucide="lightbulb"></i>提示我会怎么说</button>
             <button class="btn ${state.ai.autoMode ? "teal" : "ghost"}" data-action="ai-toggle-auto"><i data-lucide="repeat"></i>自动对话</button>
             <button class="btn ghost" data-action="ai-reset"><i data-lucide="rotate-ccw"></i>重新开始</button>
@@ -1930,6 +1960,20 @@
     if (action === "ai-toggle-mic") {
       if (state.ai.listening) stopAiListening(true);
       else startAiListening();
+      return;
+    }
+    if (action === "ai-start-realtime") {
+      state.ai.autoMode = true;
+      state.ai.recognitionPaused = false;
+      render();
+      startAiListening();
+      toast("实时语音对话已开始，请说英语");
+      return;
+    }
+    if (action === "ai-stop-realtime") {
+      stopAiListening(true);
+      render();
+      toast("实时语音对话已停止");
       return;
     }
     if (action === "ai-toggle-auto") {
