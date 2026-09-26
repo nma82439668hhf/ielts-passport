@@ -2937,6 +2937,69 @@ button {
   }
 }
 
+.nav-item.is-locked {
+  opacity: 0.52;
+}
+
+.nav-item.is-locked::after {
+  content: "Lock";
+  margin-left: auto;
+  color: rgba(245, 247, 244, 0.56);
+  font-family: var(--font-mono);
+  font-size: 8px;
+}
+
+.admin-panel {
+  margin-top: 24px;
+  padding: 22px;
+}
+
+.admin-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.admin-accounts {
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.admin-accounts h3 {
+  margin: 0 0 12px;
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.admin-account-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(180px, 1.2fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+
+.admin-account-row span,
+.admin-account-row em {
+  color: var(--muted);
+  font-style: normal;
+}
+
+@media (max-width: 760px) {
+  .admin-account-row {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+
+  .admin-controls .btn {
+    width: 100%;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

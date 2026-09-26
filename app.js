@@ -4,6 +4,7 @@
   const BANK = window.IELTS_BANK || {};
   const STORAGE_KEY = "ielts_passport_v1";
   let progressStorageKey = STORAGE_KEY;
+  const ADMIN_EMAILS = new Set(["nma82438@gmail.com", "nma82438.gmail"]);
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
@@ -188,6 +189,7 @@
       installPrompt: null,
       formMode: "login",
     },
+    config: { requireLogin: true, allowRegistration: true },
   };
 
   const dictionaryShardPromises = new Map();
@@ -253,6 +255,31 @@
     } catch (e) {
       /* ignore */
     }
+  }
+
+  function loadAppConfig() {
+    try {
+      const raw = localStorage.getItem("ielts_app_config");
+      if (raw) state.config = { ...state.config, ...JSON.parse(raw) };
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  function saveAppConfig() {
+    try {
+      localStorage.setItem("ielts_app_config", JSON.stringify(state.config));
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  function isAdminEmail(email) {
+    return ADMIN_EMAILS.has(String(email || "").trim().toLowerCase());
+  }
+
+  function isAdminUser(user = state.account.user) {
+    return Boolean(user && isAdminEmail(user.email));
   }
 
   function isLikelyMobileWebView() {
@@ -1070,6 +1097,13 @@
   }
 
   function setView(view, param) {
+    if (state.config.requireLogin && !state.account.user && !["account", "about"].includes(view)) {
+      state.view = "account";
+      state.param = null;
+      toast("请先登录后使用");
+      render();
+      return;
+    }
     state.view = view;
     state.param = param || null;
     render();
@@ -1088,12 +1122,17 @@
   function render() {
     const root = $("#view-root");
     const titleEl = $("#view-title");
+    if (state.config.requireLogin && !state.account.user && !["account", "about"].includes(state.view)) {
+      state.view = "account";
+    }
     titleEl.textContent = VIEW_TITLES[state.view] || "今日学习";
     $$(".nav-item").forEach((btn) => {
       const activeView = btn.dataset.view === state.view;
       const activeByParam = state.view === "lesson" && btn.dataset.view === "path";
       const activePractice = ["reading", "listening", "writing", "quiz"].includes(state.view) && btn.dataset.view === "practice";
+      const gated = state.config.requireLogin && !state.account.user && btn.dataset.view !== "account";
       btn.classList.toggle("is-active", activeView || activeByParam || activePractice);
+      btn.classList.toggle("is-locked", gated);
     });
 
     let html = "";
@@ -1852,7 +1891,7 @@
       const initial = (state.progress.profile.displayName || user.email || "U").slice(0, 1).toUpperCase();
       const totalQuestions = Object.values(state.progress.stats).reduce((n, s) => n + (s.attempted || 0), 0);
       return `
-        <div class="section-head reveal"><div><h2>账户与同步</h2><p>当前学习进度绑定到你的账户，可以导出备份；云端账户可跨设备同步。</p></div><span class="tag ${user.mode === "supabase" ? "teal" : "gold"}">${user.mode === "supabase" ? "云端账户" : "本地账户"}</span></div>
+        <div class="section-head reveal"><div><h2>账户与同步</h2><p>当前学习进度绑定到你的账户，可以导出备份；云端账户可跨设备同步。</p></div><span class="tag ${isAdminUser(user) ? "red" : user.mode === "supabase" ? "teal" : "gold"}">${isAdminUser(user) ? "管理员" : user.mode === "supabase" ? "云端账户" : "本地账户"}</span></div>
         <div class="account-layout">
           <section class="panel account-card reveal">
             <div class="account-profile"><div class="account-avatar">${esc(initial)}</div><div><h3>${esc(state.progress.profile.displayName || user.name || "学习者")}</h3><span>${esc(user.email)}</span></div></div>
@@ -1879,6 +1918,7 @@
             <p class="account-note">云端登录使用 Supabase 官方 Auth 接口，密码不会保存在本网站。当前账户类型：${user.mode === "supabase" ? "Supabase 云端" : "本机浏览器"}。</p>
           </aside>
         </div>
+        ${isAdminUser(user) ? renderAdminPanel() : ""}
         ${downloads}`;
     }
     const mode = state.account.formMode;
@@ -1886,7 +1926,7 @@
       <div class="section-head reveal"><div><h2>邮箱注册登录</h2><p>本地账户立即使用；配置 Supabase 后可以跨设备登录并同步学习进度。</p></div><span class="tag gold">网页版 + App 版</span></div>
       <div class="account-layout">
         <section class="panel account-card reveal">
-          <div class="seg account-tabs"><button data-action="account-mode" data-mode="login" class="${mode === "login" ? "is-active" : ""}">登录</button><button data-action="account-mode" data-mode="register" class="${mode === "register" ? "is-active" : ""}">注册</button></div>
+          <div class="seg account-tabs"><button data-action="account-mode" data-mode="login" class="${mode === "login" ? "is-active" : ""}">登录</button>${state.config.allowRegistration ? `<button data-action="account-mode" data-mode="register" class="${mode === "register" ? "is-active" : ""}">注册</button>` : ""}</div>
           <form class="account-form" id="account-form">
             ${mode === "register" ? `<label>昵称<input id="account-name" autocomplete="nickname" placeholder="例如：Wei" /></label>` : ""}
             <label>邮箱<input id="account-email" type="email" autocomplete="email" placeholder="you@example.com" required /></label>
@@ -1901,11 +1941,29 @@
           <label>Supabase URL<input id="supabase-url" value="${esc(cloud.url)}" placeholder="https://xxxx.supabase.co" /></label>
           <label>Supabase Anon Key<input id="supabase-anon-key" type="password" value="${esc(cloud.anonKey)}" placeholder="eyJ..." /></label>
           <button class="btn ghost" data-action="save-cloud-settings"><i data-lucide="save"></i>保存云端配置</button>
-          <button class="btn teal" data-action="cloud-signup"><i data-lucide="cloud"></i>云端邮箱注册</button>
+          ${state.config.allowRegistration ? `<button class="btn teal" data-action="cloud-signup"><i data-lucide="cloud"></i>云端邮箱注册</button>` : ""}
           <button class="btn ghost" data-action="cloud-signin"><i data-lucide="log-in"></i>云端邮箱登录</button>
         </aside>
       </div>
       ${downloads}`;
+  }
+
+  function renderAdminPanel() {
+    const accounts = Object.values(localAccounts()).map((a) => ({ email: a.email, name: a.name, createdAt: a.createdAt }));
+    return `
+      <section class="admin-panel panel reveal">
+        <div class="section-head"><div><h2>管理员面板</h2><p>管理员邮箱：${esc([...ADMIN_EMAILS].join(" / "))}</p></div><span class="tag red">Admin</span></div>
+        <div class="admin-controls">
+          <button class="btn ${state.config.requireLogin ? "teal" : "ghost"}" data-action="admin-toggle-login"><i data-lucide="lock"></i>登录后才可使用：${state.config.requireLogin ? "已开启" : "已关闭"}</button>
+          <button class="btn ${state.config.allowRegistration ? "teal" : "ghost"}" data-action="admin-toggle-register"><i data-lucide="user-plus"></i>允许注册：${state.config.allowRegistration ? "已开启" : "已关闭"}</button>
+          <button class="btn ghost" data-action="admin-export-accounts"><i data-lucide="download"></i>导出用户列表</button>
+        </div>
+        <div class="admin-accounts">
+          <h3>本机邮箱账户（${accounts.length}）</h3>
+          ${accounts.length ? accounts.map((a) => `<div class="admin-account-row"><strong>${esc(a.name || a.email)}</strong><span>${esc(a.email)}</span><em>${a.createdAt ? new Date(a.createdAt).toLocaleDateString("zh-CN") : ""}</em></div>`).join("") : `<p class="account-note">当前浏览器还没有本地邮箱账户。</p>`}
+        </div>
+        <p class="account-note">当前管理员权限基于邮箱匹配。正式跨设备管理员权限应通过 Supabase Auth 邮箱验证和服务端角色表配置，避免仅靠前端判断被绕过。</p>
+      </section>`;
   }
 
   function renderAppDownloads() {
@@ -2444,6 +2502,32 @@
       installApp();
       return;
     }
+    if (action === "admin-toggle-login") {
+      if (!isAdminUser()) return;
+      state.config.requireLogin = !state.config.requireLogin;
+      saveAppConfig();
+      render();
+      return;
+    }
+    if (action === "admin-toggle-register") {
+      if (!isAdminUser()) return;
+      state.config.allowRegistration = !state.config.allowRegistration;
+      saveAppConfig();
+      render();
+      return;
+    }
+    if (action === "admin-export-accounts") {
+      if (!isAdminUser()) return;
+      const payload = JSON.stringify(Object.values(localAccounts()).map((a) => ({ email: a.email, name: a.name, createdAt: a.createdAt })), null, 2);
+      const blob = new Blob([payload], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `ielts-passport-users-${todayKey()}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      return;
+    }
     if (action === "set-ai-scenario") {
       startAiScenario(target.dataset.id);
       return;
@@ -2962,8 +3046,10 @@
   function init() {
     loadAiSettings();
     loadTtsSettings();
+    loadAppConfig();
     loadAccountSession();
     if (state.account.user) switchAccountProgress(state.account.user);
+    if (state.config.requireLogin && !state.account.user) state.view = "account";
     autoEnableCompatIfNeeded();
     bindEvents();
     const ttsBtn = $("#tts-compat");
