@@ -5,8 +5,21 @@
   const STORAGE_KEY = "ielts_passport_v1";
   let progressStorageKey = STORAGE_KEY;
   const ADMIN_EMAILS = new Set(["nma82438@gmail.com", "nma82438.gmail"]);
+  const PUBLISHED_CLOUD = window.IELTS_CLOUD_CONFIG || {};
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+
+  function normalizeCloudConfig(cloud = {}) {
+    return {
+      url: String(cloud.url || "").trim().replace(/\/$/, ""),
+      anonKey: String(cloud.anonKey || "").trim(),
+    };
+  }
+
+  function cloudConfigured(cloud = state.account.cloud) {
+    const config = normalizeCloudConfig(cloud);
+    return /^https?:\/\//i.test(config.url) && config.anonKey.length > 20;
+  }
 
   const VIEW_TITLES = {
     home: "今日学习",
@@ -191,10 +204,10 @@
     account: {
       user: null,
       mode: "guest",
-      cloud: { url: "", anonKey: "" },
+      cloud: normalizeCloudConfig(PUBLISHED_CLOUD),
       syncStatus: "idle",
       installPrompt: null,
-      formMode: "register-cloud",
+      formMode: "register",
       registerStorage: "cloud",
     },
     config: { requireLogin: true, allowRegistration: true, oauth: { wechatAppId: "", qqAppId: "", workerUrl: "" } },
@@ -348,6 +361,7 @@
   }
 
   function loadAccountSession() {
+    state.account.cloud = normalizeCloudConfig(PUBLISHED_CLOUD);
     try {
       const raw = localStorage.getItem("ielts_account_session");
       if (raw) state.account.user = JSON.parse(raw);
@@ -356,7 +370,7 @@
     }
     try {
       const cloud = localStorage.getItem("ielts_supabase_settings");
-      if (cloud) state.account.cloud = { ...state.account.cloud, ...JSON.parse(cloud) };
+      if (cloud) state.account.cloud = { ...state.account.cloud, ...normalizeCloudConfig(JSON.parse(cloud)) };
     } catch (e) {
       /* ignore */
     }
@@ -2074,7 +2088,7 @@
       const totalQuestions = Object.values(state.progress.stats).reduce((n, s) => n + (s.attempted || 0), 0);
       return `
         <div class="section-head reveal"><div><h2>账户与同步</h2><p>当前学习进度绑定到你的账户，可以导出备份；云端账户可跨设备同步。</p></div><div class="section-head-actions"><button class="btn ghost" data-action="go" data-view="settings"><i data-lucide="settings"></i>设置</button><span class="tag ${isAdminUser(user) ? "red" : user.mode === "supabase" ? "teal" : "gold"}">${isAdminUser(user) ? "管理员" : user.mode === "supabase" ? "云端账户" : "本地账户"}</span></div></div>
-        ${user.mode !== "supabase" ? `<div class="account-warning"><strong>这是本机浏览器账户</strong><p>换到另一个浏览器或手机后无法直接登录。要跨设备使用，请配置右侧的 Supabase 云端账户。</p></div>` : ""}
+        ${user.mode !== "supabase" ? `<div class="account-warning"><strong>这是本机浏览器账户</strong><p>换到另一个浏览器或手机后无法直接登录。要跨设备使用，请配置站点云端服务后改用云端邮箱账户。</p></div>` : ""}
         <div class="account-layout">
           <section class="panel account-card reveal">
             <div class="account-profile"><div class="account-avatar">${esc(initial)}</div><div><h3>${esc(state.progress.profile.displayName || user.name || "学习者")}</h3><span>${esc(user.email)}</span></div></div>
@@ -2105,38 +2119,38 @@
         ${isAdminUser(user) ? renderAdminPanel() : ""}
         ${downloads}`;
     }
-    const mode = state.account.formMode;
-    const isRegister = mode.startsWith("register");
-    const cloudRegister = mode === "register-cloud";
+    const mode = state.account.formMode === "login" ? "login" : "register";
+    const isRegister = mode === "register";
+    const cloudSelected = state.account.registerStorage !== "local";
+    const cloudReady = cloudConfigured();
     return `
-      <div class="section-head reveal"><div><h2>邮箱注册登录</h2><p>新注册默认保存到云端，适合跨浏览器和跨设备使用。</p></div><div class="section-head-actions"><button class="btn ghost" data-action="go" data-view="settings"><i data-lucide="settings"></i>设置</button><span class="tag teal">默认云端存储</span></div></div>
-      <div class="account-warning reveal"><strong>为什么换浏览器登录不上？</strong><p>本地账户只保存在当前浏览器。现在注册默认选择云端账户；如果尚未配置 Supabase，可以先切换为“仅本机”，配置后再使用云端注册。</p></div>
-      <div class="account-layout">
+      <div class="section-head reveal"><div><h2>邮箱注册登录</h2><p>新注册默认保存到云端，适合跨浏览器和跨设备使用。</p></div><div class="section-head-actions"><button class="btn ghost" data-action="go" data-view="settings"><i data-lucide="settings"></i>设置</button><span class="tag ${cloudReady ? "teal" : "gold"}">${cloudReady ? "默认云端存储" : "云端待配置"}</span></div></div>
+      <div class="account-warning reveal"><strong>${cloudReady ? "云端账户可在其他浏览器登录" : "为什么换浏览器登录不上？"}</strong><p>${cloudReady ? "注册后学习进度会同步到云端，在手机或另一台电脑上使用同一邮箱即可登录。" : "本地账户只保存在当前浏览器。管理员配置一次云端服务后，所有浏览器都会自动使用同一云端账户；也可以先切换为“仅本机”。"}</p></div>
+      <div class="account-layout single">
         <section class="panel account-card reveal">
-          <div class="seg account-tabs"><button data-action="account-mode" data-mode="login" class="${mode === "login" ? "is-active" : ""}">登录</button>${state.config.allowRegistration ? `<button data-action="account-mode" data-mode="register-cloud" class="${isRegister ? "is-active" : ""}">注册</button>` : ""}</div>
-          ${isRegister && state.config.allowRegistration ? `<div class="seg storage-tabs"><button data-action="set-register-storage" data-storage="cloud" class="${cloudRegister ? "is-active" : ""}">云端存储（推荐）</button><button data-action="set-register-storage" data-storage="local" class="${!cloudRegister ? "is-active" : ""}">仅本机</button></div>` : ""}
+          <div class="seg account-tabs"><button data-action="account-mode" data-mode="login" class="${mode === "login" ? "is-active" : ""}">登录</button>${state.config.allowRegistration ? `<button data-action="account-mode" data-mode="register" class="${isRegister ? "is-active" : ""}">注册</button>` : ""}</div>
+          <div class="seg storage-tabs"><button data-action="set-register-storage" data-storage="cloud" class="${cloudSelected ? "is-active" : ""}">云端存储（推荐）</button><button data-action="set-register-storage" data-storage="local" class="${!cloudSelected ? "is-active" : ""}">仅本机</button></div>
           <form class="account-form" id="account-form">
             ${isRegister ? `<label>昵称<input id="account-name" autocomplete="nickname" placeholder="例如：Wei" /></label>` : ""}
-            ${isRegister && cloudRegister ? `<label>Supabase URL<input id="supabase-url" value="${esc(cloud.url)}" placeholder="https://xxxx.supabase.co" /></label><label>Supabase Anon Key<input id="supabase-anon-key" type="password" value="${esc(cloud.anonKey)}" placeholder="eyJ..." /></label>` : ""}
             <label>邮箱<input id="account-email" type="email" autocomplete="email" placeholder="you@example.com" required /></label>
             <label>密码<input id="account-password" type="password" autocomplete="${isRegister ? "new-password" : "current-password"}" placeholder="至少 6 位" required minlength="6" /></label>
-            <button class="btn primary" type="button" data-action="account-submit"><i data-lucide="${isRegister ? "user-plus" : "log-in"}"></i>${isRegister ? (cloudRegister ? "注册云端账户" : "注册本机账户") : "登录本机账户"}</button>
+            <button class="btn primary" type="button" data-action="account-submit"><i data-lucide="${isRegister ? "user-plus" : "log-in"}"></i>${isRegister ? (cloudSelected ? "注册云端账户" : "注册本机账户") : (cloudSelected ? "登录云端账户" : "登录本机账户")}</button>
           </form>
           <div class="social-login">
             <button class="social-btn wechat" data-action="social-login" data-provider="wechat"><span>微</span>微信登录</button>
             <button class="social-btn qq" data-action="social-login" data-provider="qq"><span>Q</span>QQ 登录</button>
           </div>
-          <p class="account-note">云端账户通过 Supabase Auth 保存，支持跨浏览器登录和进度同步；本机账户只保存当前浏览器。</p>
+          <p class="account-note">${cloudReady ? "云端账户通过 Supabase Auth 保存，支持跨浏览器登录和进度同步；本机账户只保存当前浏览器。" : "当前网站还没有配置云端服务。普通用户可以先注册本机账户，管理员展开下方设置完成一次配置即可。"}</p>
+          <details class="cloud-setup-details">
+            <summary>${cloudReady ? "查看或更换云端服务" : "管理员配置云端服务"}</summary>
+            <div class="cloud-setup-body">
+              <label>Supabase URL<input id="supabase-url-settings" value="${esc(cloud.url)}" placeholder="https://xxxx.supabase.co" /></label>
+              <label>Supabase Anon Key<input id="supabase-anon-key-settings" type="password" value="${esc(cloud.anonKey)}" placeholder="eyJ..." /></label>
+              <button class="btn ghost" data-action="save-cloud-settings"><i data-lucide="save"></i>保存到本机</button>
+              <p>发布时把同一组配置写入 <code>data/cloud-config.js</code>，所有浏览器就会自动共用这个云端服务。</p>
+            </div>
+          </details>
         </section>
-        <aside class="panel account-cloud reveal">
-          <h3>云端邮箱账户（可选）</h3>
-          <p>填写你的 Supabase 项目地址和 Anon Key。注册后 Supabase 可能要求邮箱确认，确认完成后即可跨设备同步。</p>
-          <label>Supabase URL<input id="supabase-url-settings" value="${esc(cloud.url)}" placeholder="https://xxxx.supabase.co" /></label>
-          <label>Supabase Anon Key<input id="supabase-anon-key-settings" type="password" value="${esc(cloud.anonKey)}" placeholder="eyJ..." /></label>
-          <button class="btn ghost" data-action="save-cloud-settings"><i data-lucide="save"></i>保存云端配置</button>
-          ${state.config.allowRegistration ? `<button class="btn teal" data-action="cloud-signup"><i data-lucide="cloud"></i>云端邮箱注册</button>` : ""}
-          <button class="btn ghost" data-action="cloud-signin"><i data-lucide="log-in"></i>云端邮箱登录</button>
-        </aside>
       </div>
       ${downloads}`;
   }
@@ -2252,13 +2266,13 @@
       { name: "iOS", file: "IELTS-Passport-iOS-Unsigned-1.0.1.ipa", icon: "apple", note: "未签名 IPA，需要 Apple 证书" },
     ];
     return `
-      <section class="app-download-section reveal">
-        <div class="section-head"><div><h2>下载 App 安装包</h2><p>网页版和 PWA 会自动更新；原生安装包来自 GitHub Release。</p></div></div>
+      <details class="app-download-section reveal">
+        <summary><span><strong>下载 App 安装包</strong><small>电脑、Android 和 iOS 可选安装</small></span><i data-lucide="chevron-down"></i></summary>
         <div class="download-grid">
           ${items.map((item) => `<a class="download-card" href="${base}/${item.file}" target="_blank" rel="noopener"><div class="download-icon"><i data-lucide="${item.icon}"></i></div><strong>${esc(item.name)}</strong><span>${esc(item.note)}</span><b>下载安装包</b></a>`).join("")}
           <button class="download-card" data-action="install-app"><div class="download-icon"><i data-lucide="globe"></i></div><strong>PWA / 网页版</strong><span>无需安装包，添加到主屏幕即可</span><b>安装 PWA</b></button>
         </div>
-      </section>`;
+      </details>`;
   }
 
   function exportProgress() {
@@ -2753,18 +2767,18 @@
       return;
     }
     if (action === "account-mode") {
-      state.account.formMode = target.dataset.mode === "login" ? "login" : "register-cloud";
-      if (state.account.formMode.startsWith("register")) state.account.registerStorage = "cloud";
+      state.account.formMode = target.dataset.mode === "login" ? "login" : "register";
       render();
       return;
     }
     if (action === "set-register-storage") {
       state.account.registerStorage = target.dataset.storage === "local" ? "local" : "cloud";
-      state.account.formMode = state.account.registerStorage === "local" ? "register-local" : "register-cloud";
       $$(".storage-tabs button").forEach((btn) => btn.classList.toggle("is-active", btn.dataset.storage === state.account.registerStorage));
       const submit = $("[data-action=account-submit]");
       if (submit) {
-        submit.innerHTML = `<i data-lucide="user-plus"></i>${state.account.registerStorage === "cloud" ? "注册云端账户" : "注册本机账户"}`;
+        const isRegister = state.account.formMode !== "login";
+        const cloudSelected = state.account.registerStorage === "cloud";
+        submit.innerHTML = `<i data-lucide="${isRegister ? "user-plus" : "log-in"}"></i>${isRegister ? (cloudSelected ? "注册云端账户" : "注册本机账户") : (cloudSelected ? "登录云端账户" : "登录本机账户")}`;
         refreshIcons();
       }
       return;
@@ -2777,19 +2791,29 @@
         toast("请填写邮箱和密码");
         return;
       }
-      if (state.account.formMode.startsWith("register")) {
-        if (state.account.registerStorage === "cloud") {
-          state.account.cloud.url = ($("#supabase-url") ? $("#supabase-url").value : state.account.cloud.url).trim();
-          state.account.cloud.anonKey = ($("#supabase-anon-key") ? $("#supabase-anon-key").value : state.account.cloud.anonKey).trim();
+      const isRegister = state.account.formMode !== "login";
+      if (state.account.registerStorage === "cloud") {
+        const settingsUrl = $("#supabase-url-settings");
+        const settingsKey = $("#supabase-anon-key-settings");
+        if (settingsUrl || settingsKey) {
+          state.account.cloud = normalizeCloudConfig({
+            url: settingsUrl ? settingsUrl.value : state.account.cloud.url,
+            anonKey: settingsKey ? settingsKey.value : state.account.cloud.anonKey,
+          });
           saveCloudSettings();
-          try {
-            await supabaseSignUp(email, password);
-          } catch (e) {
-            toast(e.message || "云端注册失败，请检查 Supabase 配置");
-          }
-        } else {
-          registerLocal(email, password, name);
         }
+        if (!cloudConfigured()) {
+          toast("云端服务尚未配置，请联系管理员或先选择“仅本机”");
+          return;
+        }
+        try {
+          if (isRegister) await supabaseSignUp(email, password);
+          else await supabaseSignIn(email, password);
+        } catch (e) {
+          toast(e.message || (isRegister ? "云端注册失败，请检查 Supabase 配置" : "云端登录失败"));
+        }
+      } else if (isRegister) {
+        registerLocal(email, password, name);
       } else {
         loginLocal(email, password);
       }
@@ -2802,10 +2826,13 @@
     if (action === "save-cloud-settings") {
       const urlInput = $("#supabase-url") || $("#supabase-url-settings");
       const keyInput = $("#supabase-anon-key") || $("#supabase-anon-key-settings");
-      state.account.cloud.url = (urlInput ? urlInput.value : "").trim();
-      state.account.cloud.anonKey = (keyInput ? keyInput.value : "").trim();
+      state.account.cloud = normalizeCloudConfig({
+        url: urlInput ? urlInput.value : state.account.cloud.url,
+        anonKey: keyInput ? keyInput.value : state.account.cloud.anonKey,
+      });
       saveCloudSettings();
-      toast("云端配置已保存在本机");
+      render();
+      toast(cloudConfigured() ? "云端服务已保存到本机" : "请填写完整的 Supabase URL 和 Anon Key");
       return;
     }
     if (action === "save-oauth-config") {

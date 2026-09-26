@@ -2749,6 +2749,10 @@ button {
   align-items: start;
 }
 
+.account-layout.single {
+  grid-template-columns: minmax(0, 720px);
+}
+
 .account-card,
 .account-cloud {
   padding: 22px;
@@ -2935,6 +2939,85 @@ button {
   box-shadow: none;
 }
 
+.cloud-setup-details {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.cloud-setup-details summary,
+.app-download-section > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.cloud-setup-details summary::-webkit-details-marker,
+.app-download-section > summary::-webkit-details-marker {
+  display: none;
+}
+
+.cloud-setup-details summary {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cloud-setup-details summary::after {
+  content: "+";
+  font-family: var(--font-mono);
+  font-size: 16px;
+}
+
+.cloud-setup-details[open] summary::after {
+  content: "−";
+}
+
+.cloud-setup-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.cloud-setup-body label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.cloud-setup-body input {
+  min-height: 44px;
+  padding: 10px 12px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.cloud-setup-body p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.cloud-setup-body code {
+  padding: 1px 5px;
+  color: var(--teal-deep);
+  background: rgba(103, 214, 202, 0.14);
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
 @media (max-width: 1020px) {
   .account-layout {
     grid-template-columns: 1fr;
@@ -2954,6 +3037,44 @@ button {
 
 .app-download-section {
   margin-top: 26px;
+}
+
+.app-download-section > summary {
+  padding: 15px 17px;
+  color: var(--ink);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.56));
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(18px) saturate(160%);
+}
+
+.app-download-section > summary span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.app-download-section > summary strong {
+  font-family: var(--font-display);
+  font-size: 18px;
+}
+
+.app-download-section > summary small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.app-download-section > summary i {
+  transition: transform 0.22s ease;
+}
+
+.app-download-section[open] > summary i {
+  transform: rotate(180deg);
+}
+
+.app-download-section[open] .download-grid {
+  margin-top: 12px;
 }
 
 .download-grid {

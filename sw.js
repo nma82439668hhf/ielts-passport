@@ -1,4 +1,4 @@
-const CACHE_NAME = "ielts-passport-v3";
+const CACHE_NAME = "ielts-passport-v4";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -25,6 +25,7 @@ const APP_SHELL = [
   "./data/sources.js",
   "./data/vocab-meta.js",
   "./data/version.js",
+  "./data/cloud-config.js",
   "./data/remote-version.js"
 ];
 

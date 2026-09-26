@@ -35,7 +35,7 @@ python -m http.server 8080
 - 玩家等级：按 XP 升级，等级对应雅思分数区间
 - 预测雅思分：根据正确率、练习量和模拟考试成绩估算
 - 题型挑战：单词、听力、阅读、混合挑战
-- 模拟考试：自动抽 20 题，30 分钟，完成后换算预测 Band
+- 模拟考试：A0–C1 / IELTS 七个阶段，每场 30 题、35 分钟，完成后换算预测 Band
 - 精选视频：内嵌哔哩哔哩公开视频，版权归原作者所有
 
 ## 本轮网站优化
@@ -72,6 +72,7 @@ python -m http.server 8080
 
 - 邮箱注册登录：支持本机浏览器账户，注册后学习进度按邮箱隔离保存，可导出/导入备份。
 - 云端账户：填写自己的 Supabase URL 和 Anon Key 后，可以通过 Supabase Auth 使用邮箱注册、登录，并把学习进度同步到云端。
+- 站点统一云端配置：把同一组 `url` 和 `anonKey` 写入 `data/cloud-config.js`。这样任何浏览器打开网站都会自动使用同一个云端服务，不会出现“一个浏览器注册、另一个浏览器看不到配置”的问题。
 - App 版本：站点包含 `manifest.webmanifest` 和 `sw.js`，是完整 PWA。手机 Chrome/Edge 或桌面浏览器可通过“安装 App 版本”或“添加到主屏幕”安装为独立应用。
 - 离线能力：核心页面、题库和词典分片会缓存；音频和词典分片按需缓存，避免首次下载过大。
 - 默认开启登录门禁：未登录时只能访问登录/注册页和来源页，其他学习功能会被锁定。
@@ -79,6 +80,19 @@ python -m http.server 8080
 - 微信 / QQ 登录：登录页提供微信和 QQ 按钮；管理员面板填写 AppID 和 OAuth Worker 地址，Worker 模板位于 `apps/oauth-worker`，AppSecret 只保存在 Cloudflare 环境变量中。
 
 > 本地账户保存在当前浏览器中，管理员判断也基于邮箱匹配。需要跨设备、防篡改的管理员权限时，应使用 Supabase Auth 的邮箱验证和服务端角色表。
+
+## Supabase 配置
+
+编辑 `data/cloud-config.js`：
+
+```js
+window.IELTS_CLOUD_CONFIG = {
+  url: "https://你的项目.supabase.co",
+  anonKey: "你的 Supabase anon key"
+};
+```
+
+`anonKey` 是 Supabase 设计为可公开的浏览器密钥，可以随网站发布；不要填写 `service_role` key。提交并推送后，GitHub Pages 会自动重新发布，所有浏览器都会读取同一份云端配置。
 
 ## 云端更新与混合模式
 
