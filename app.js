@@ -1240,7 +1240,7 @@
     state.view = view;
     state.param = param || null;
     render();
-    $(".sidebar").classList.remove("sidebar-open");
+    if ($(".sidebar")) $(".sidebar").classList.remove("sidebar-open");
     $("body").classList.remove("sidebar-open");
     window.scrollTo({ top: 0, behavior: "instant" in window ? "instant" : "auto" });
   }
@@ -3557,10 +3557,7 @@
       setView(btn.dataset.view);
     });
     $(".source-link").addEventListener("click", () => setView("about"));
-    $("#menu-btn").addEventListener("click", () => {
-      $("body").classList.toggle("sidebar-open");
-    });
-    $("#scrim").addEventListener("click", () => {
+    if ($("#scrim")) $("#scrim").addEventListener("click", () => {
       $("body").classList.remove("sidebar-open");
     });
     $("#target-minus").addEventListener("click", () => setTarget(-0.5));
