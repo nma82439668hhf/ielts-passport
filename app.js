@@ -12,12 +12,15 @@
     home: "今日学习",
     path: "学习地图",
     lesson: "学习模块",
+    library: "阅读与写作",
     practice: "题库练习",
     challenges: "题型挑战",
     exam: "模拟考试",
     videos: "教学系列",
     ai: "AI 英语对话",
     account: "账户与同步",
+    settings: "设置",
+    review: "错题复习",
     session: "答题中",
     reading: "阅读练习",
     listening: "听力练习",
@@ -146,6 +149,8 @@
       daily: { date: "", words: 0, questions: 0, minutes: 0, tests: 0, lastMilestone: 0, wordsSeen: [] },
       player: { xp: 0, level: 1, estimatedBand: 3.5, bestBand: 0, mockScores: [] },
       profile: { displayName: "", email: "" },
+      wrongAnswers: [],
+      vocabUnits: {},
     };
   }
 
@@ -159,6 +164,8 @@
     answerMap: {},
     vocabLevel: "A1",
     vocabDeck: [],
+    vocabDeckKey: "",
+    vocabUnit: 1,
     vocabIndex: 0,
     speakingIndex: Math.floor(Math.random() * ((BANK.speaking || []).length || 1)),
     speakingLevel: "A1",
@@ -187,9 +194,13 @@
       cloud: { url: "", anonKey: "" },
       syncStatus: "idle",
       installPrompt: null,
-      formMode: "login",
+      formMode: "register-cloud",
+      registerStorage: "cloud",
     },
     config: { requireLogin: true, allowRegistration: true, oauth: { wechatAppId: "", qqAppId: "", workerUrl: "" } },
+    settings: { voiceEnabled: true, autoEncourage: true, voiceURI: "", rate: 0.82, ttsCompat: false, lookupEnabled: true },
+    libraryTab: "stories",
+    libraryItemId: "",
   };
 
   const dictionaryShardPromises = new Map();
@@ -251,6 +262,28 @@
 
   function saveTtsSettings() {
     try {
+      localStorage.setItem("ielts_tts_compat", state.ttsCompat ? "1" : "0");
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  function loadUserSettings() {
+    try {
+      const raw = localStorage.getItem("ielts_user_settings");
+      if (raw) state.settings = { ...state.settings, ...JSON.parse(raw) };
+    } catch (e) {
+      /* ignore */
+    }
+    state.ttsCompat = Boolean(state.settings.ttsCompat);
+    state.lookupEnabled = state.settings.lookupEnabled !== false;
+  }
+
+  function saveUserSettings() {
+    state.settings.ttsCompat = Boolean(state.ttsCompat);
+    state.settings.lookupEnabled = state.lookupEnabled;
+    try {
+      localStorage.setItem("ielts_user_settings", JSON.stringify(state.settings));
       localStorage.setItem("ielts_tts_compat", state.ttsCompat ? "1" : "0");
     } catch (e) {
       /* ignore */
@@ -621,15 +654,18 @@
 
   function getLevelVocab(level) {
     const levels = BANK.vocabLevels || {};
-    if (levels[level] && levels[level].length) return levels[level];
+    const effectiveLevel = level === "A0" ? "A1" : level;
+    if (levels[effectiveLevel] && levels[effectiveLevel].length) return levels[effectiveLevel];
     return BANK.learn && BANK.learn.vocab ? BANK.learn.vocab : [];
   }
 
   function resetVocabDeck() {
     const vocab = getLevelVocab(state.vocabLevel);
-    state.vocabDeck = shuffle([...Array(vocab.length).keys()]);
+    const start = Math.max(0, (state.vocabUnit - 1) * 20);
+    const unitIndices = [...Array(Math.min(20, Math.max(0, vocab.length - start))).keys()].map((i) => start + i);
+    state.vocabDeck = shuffle(unitIndices);
     state.vocabIndex = 0;
-    state.vocabDeckKey = state.vocabLevel;
+    state.vocabDeckKey = `${state.vocabLevel}:${state.vocabUnit}`;
   }
 
   let activeAudio = null;
@@ -777,7 +813,8 @@
 
   function speakText(text, rate = 0.82, onEnd = null) {
     const value = String(text || "").trim();
-    if (!value) return;
+    if (!value || !state.settings.voiceEnabled) return;
+    const preferredRate = Number(state.settings.rate) || rate;
     stopSpeechAudio();
     if (state.ttsCompat || !window.speechSynthesis || !window.SpeechSynthesisUtterance) {
       playCompatibleTts(value, onEnd);
@@ -799,10 +836,10 @@
     utter.onerror = fallback;
     if (typeof onEnd === "function") utter.onend = onEnd;
     utter.lang = "en-US";
-    utter.rate = rate;
+    utter.rate = preferredRate;
     utter.volume = 1;
     const voices = window.speechSynthesis.getVoices ? window.speechSynthesis.getVoices() : [];
-    const preferred = voices.find((v) => /en-US/i.test(v.lang)) || voices.find((v) => /^en/i.test(v.lang));
+    const preferred = (state.settings.voiceURI && voices.find((v) => v.voiceURI === state.settings.voiceURI)) || voices.find((v) => /en-US/i.test(v.lang)) || voices.find((v) => /^en/i.test(v.lang));
     if (preferred) utter.voice = preferred;
     try {
       window.speechSynthesis.resume();
@@ -815,7 +852,7 @@
 
   function speakWord(word, trigger) {
     const value = String(word || "").trim();
-    if (!value) return;
+    if (!value || !state.settings.voiceEnabled) return;
     stopSpeechAudio();
     if (trigger) trigger.classList.add("is-speaking");
     const unmark = () => {
@@ -859,7 +896,7 @@
 
     let started = false;
     const onReady = () => {
-      if (started) return;
+    if (started) return;
       started = true;
       playAudio();
     };
@@ -873,8 +910,22 @@
     }, 550);
   }
 
+  function playEncouragement() {
+    if (!state.settings.voiceEnabled || !state.settings.autoEncourage) return;
+    const phrases = [
+      "Great job. Keep going!",
+      "Nice work. You are improving every day.",
+      "Well done. Let's learn the next unit.",
+      "You did it. Keep up the good work.",
+      "Excellent progress. Stay consistent!",
+    ];
+    const phrase = phrases[Math.floor(Math.random() * phrases.length)];
+    toast(phrase);
+    speakText(phrase, 0.84);
+  }
+
   function levelOrder(level) {
-    return { A1: 1, A2: 2, B1: 3, B2: 4, C1: 5, IELTS: 6 }[level] || 99;
+    return { A0: 0, A1: 1, A2: 2, B1: 3, B2: 4, C1: 5, IELTS: 6 }[level] || 99;
   }
 
   function withLevel(list, level) {
@@ -1055,7 +1106,7 @@
   }
 
   function playerLevelFromXp(xp) {
-    const thresholds = [0, 120, 320, 650, 1100, 1800];
+    const thresholds = [0, 80, 200, 380, 620, 920, 1280, 1700, 2200];
     let level = 1;
     thresholds.forEach((threshold, i) => {
       if (xp >= threshold) level = i + 1;
@@ -1064,17 +1115,20 @@
   }
 
   function xpForLevel(level) {
-    return [0, 120, 320, 650, 1100, 1800][Math.max(0, Math.min(5, level - 1))] || 1800;
+    return [0, 80, 200, 380, 620, 920, 1280, 1700, 2200][Math.max(0, Math.min(8, level - 1))] || 2200;
   }
 
   function levelBandLabel(level) {
     return {
-      1: "入门 · Band 3.0–3.5",
-      2: "基础 · Band 4.0–4.5",
-      3: "进阶 · Band 5.0–5.5",
-      4: "稳过 · Band 6.0–6.5",
-      5: "熟练 · Band 7.0–7.5",
-      6: "高分 · Band 8.0+",
+      1: "Lv1 零基础 · A0–A1",
+      2: "Lv2 入门 · Band 3.0–3.5",
+      3: "Lv3 基础 · Band 4.0–4.5",
+      4: "Lv4 进阶 · Band 5.0–5.5",
+      5: "Lv5 中级 · Band 5.5–6.0",
+      6: "Lv6 稳过 · Band 6.0–6.5",
+      7: "Lv7 熟练 · Band 7.0–7.5",
+      8: "Lv8 高分 · Band 8.0",
+      9: "Lv9 大师 · Band 8.5+",
     }[level] || "入门 · Band 3.0–3.5";
   }
 
@@ -1096,8 +1150,8 @@
   }
 
   function mockBandFromScore(score, level) {
-    const base = level === "A1" || level === "A2" ? 3.0 : level === "B1" || level === "B2" ? 4.0 : 4.5;
-    const span = level === "A1" || level === "A2" ? 3.5 : level === "B1" || level === "B2" ? 4.0 : 4.5;
+    const base = level === "A0" || level === "A1" || level === "A2" ? 3.0 : level === "B1" || level === "B2" ? 4.0 : 4.5;
+    const span = level === "A0" || level === "A1" || level === "A2" ? 3.5 : level === "B1" || level === "B2" ? 4.0 : 4.5;
     return Math.max(3.0, Math.min(9.0, Math.round((base + (score / 100) * span) * 2) / 2));
   }
 
@@ -1199,18 +1253,30 @@
       btn.classList.toggle("is-active", activeView || activeByParam || activePractice);
       btn.classList.toggle("is-locked", gated);
     });
+    $$(".mobile-bottom-nav button").forEach((btn) => {
+      const view = btn.dataset.view;
+      const activePractice = ["reading", "listening", "writing", "quiz"].includes(state.view) && view === "practice";
+      const activeMine = ["account", "settings"].includes(state.view) && view === "account";
+      const activeReview = ["review", "session"].includes(state.view) && view === "review";
+      btn.classList.toggle("is-active", state.view === view || activePractice || activeMine || activeReview);
+      const gated = state.config.requireLogin && !state.account.user && view !== "account";
+      btn.classList.toggle("is-locked", gated);
+    });
 
     let html = "";
     switch (state.view) {
       case "home": html = renderHome(); break;
       case "path": html = renderPath(); break;
       case "lesson": html = renderLesson(state.param); break;
+      case "library": html = renderLibrary(); break;
       case "practice": html = renderPractice(); break;
       case "challenges": html = renderChallenges(); break;
       case "exam": html = renderExam(); break;
       case "videos": html = renderVideos(); break;
       case "ai": html = renderAiChat(); break;
       case "account": html = renderAccount(); break;
+      case "settings": html = renderSettings(); break;
+      case "review": html = renderReview(); break;
       case "session": html = renderSession(); break;
       case "reading": html = renderReadingTest(state.param); break;
       case "listening": html = renderListeningTest(state.param); break;
@@ -1355,7 +1421,7 @@
 
   function renderPractice() {
     const skills = ["vocab", "reading", "listening", "writing"];
-    const levels = ["A1", "A2", "B1", "B2", "C1", "IELTS", "ALL"];
+    const levels = ["A0", "A1", "A2", "B1", "B2", "C1", "IELTS", "ALL"];
     const active = state.practiceSkill;
     const items = getPracticeItems(active);
     return `
@@ -1374,6 +1440,7 @@
 
   function getPracticeItems(skill) {
     const level = state.practiceLevel;
+    const sourceLevel = level === "A0" ? "A1" : level;
     const staged = BANK.staged || {};
     let list = [];
     if (skill === "reading") list = withLevel(BANK.reading, "IELTS").concat(withLevel(staged.reading, "A1"));
@@ -1381,7 +1448,7 @@
     if (skill === "writing") list = withLevel(BANK.writing, "IELTS").concat(withLevel(staged.writing, "A1"));
     if (skill === "vocab") list = (BANK.vocabQuiz || []).map((t) => ({ ...t, level: t.level || "A1" }));
     if (level === "ALL") return list.sort((a, b) => levelOrder(a.level) - levelOrder(b.level));
-    return list.filter((item) => item.level === level);
+    return list.filter((item) => item.level === sourceLevel);
     if (skill === "speaking") return []; // speaking has its own dedicated page
     return [];
   }
@@ -1444,22 +1511,26 @@
 
   function getLevelQuestionPool(level, skill) {
     const staged = BANK.staged || {};
+    const effectiveLevel = level === "A0" ? "A1" : level;
     if (skill === "vocab") {
-      const quizLevel = level === "IELTS" ? "C1" : level;
+      const quizLevel = effectiveLevel === "IELTS" ? "C1" : effectiveLevel;
       return (BANK.vocabQuiz || [])
         .filter((t) => t.level === quizLevel)
         .flatMap((t) => collectSessionQuestions(t, "vocab", level));
     }
+    if (skill === "grammar") {
+      return (BANK.grammar || []).filter((q) => q.level === effectiveLevel).map((q) => ({ ...q, skill: "grammar", level: effectiveLevel, context: "" }));
+    }
     if (skill === "reading") {
-      const list = level === "IELTS"
+      const list = effectiveLevel === "IELTS"
         ? withLevel(BANK.reading, "IELTS")
-        : withLevel((staged.reading || []).filter((t) => t.level === level), level);
+        : withLevel((staged.reading || []).filter((t) => t.level === effectiveLevel), effectiveLevel);
       return list.flatMap((t) => collectSessionQuestions(t, "reading", level));
     }
     if (skill === "listening") {
-      const list = level === "IELTS"
+      const list = effectiveLevel === "IELTS"
         ? withLevel(BANK.listening, "IELTS")
-        : withLevel((staged.listening || []).filter((t) => t.level === level), level);
+        : withLevel((staged.listening || []).filter((t) => t.level === effectiveLevel), effectiveLevel);
       return list.flatMap((t) => collectSessionQuestions(t, "listening", level));
     }
     return [];
@@ -1470,18 +1541,20 @@
     if (type === "vocab") pool = getLevelQuestionPool(level, "vocab");
     if (type === "reading") pool = getLevelQuestionPool(level, "reading");
     if (type === "listening") pool = getLevelQuestionPool(level, "listening");
-    if (type === "mixed") pool = getLevelQuestionPool(level, "vocab").concat(getLevelQuestionPool(level, "reading"), getLevelQuestionPool(level, "listening"));
+    if (type === "grammar") pool = getLevelQuestionPool(level, "grammar");
+    if (type === "mixed") pool = getLevelQuestionPool(level, "vocab").concat(getLevelQuestionPool(level, "reading"), getLevelQuestionPool(level, "listening"), getLevelQuestionPool(level, "grammar"));
     return shuffle(pool).slice(0, type === "vocab" ? 20 : 10);
   }
 
   function buildMockQuestions(level) {
     const vocabLevel = level === "IELTS" ? "IELTS" : level;
     const vocabPool = shuffle(getLevelQuestionPool(vocabLevel, "vocab"));
-    const reading = shuffle(getLevelQuestionPool(level, "reading")).slice(0, 6);
-    const listening = shuffle(getLevelQuestionPool(level, "listening")).slice(0, 6);
-    const remaining = Math.max(0, 20 - reading.length - listening.length);
+    const reading = shuffle(getLevelQuestionPool(level, "reading")).slice(0, 8);
+    const listening = shuffle(getLevelQuestionPool(level, "listening")).slice(0, 8);
+    const grammar = shuffle(getLevelQuestionPool(level, "grammar")).slice(0, 6);
+    const remaining = Math.max(0, 30 - reading.length - listening.length - grammar.length);
     const vocab = vocabPool.slice(0, remaining);
-    return shuffle(vocab.concat(reading, listening)).slice(0, 20);
+    return shuffle(vocab.concat(reading, listening, grammar)).slice(0, 30);
   }
 
   function stopSessionTimer() {
@@ -1521,10 +1594,34 @@
       type,
       level,
       questions,
-      remaining: kind === "mock" ? 30 * 60 : 10 * 60,
+      remaining: kind === "mock" ? 35 * 60 : 10 * 60,
       result: null,
       timerId: null,
     };
+    setView("session");
+    startSessionTimer();
+  }
+
+  function startReviewSession() {
+    const wrong = (state.progress.wrongAnswers || []).slice(-40);
+    if (!wrong.length) {
+      toast("暂时没有错题");
+      return;
+    }
+    const questions = wrong.map((item) => ({
+      type: item.type === "choice" ? "multiple-choice" : "short-answer",
+      text: item.question || "复习题",
+      answer: item.answer || "",
+      options: item.options || [],
+      accepted: item.accepted || [],
+      explain: item.explanation || "",
+      context: item.context || "",
+      skill: item.skill || "vocab",
+      level: "REVIEW",
+    }));
+    state.answerMap = {};
+    state.currentTest = null;
+    state.session = { kind: "review", type: "mixed", level: "REVIEW", questions, remaining: 15 * 60, result: null, timerId: null };
     setView("session");
     startSessionTimer();
   }
@@ -1543,6 +1640,25 @@
       state.progress.player.bestBand = Math.max(state.progress.player.bestBand || 0, band);
       state.progress.player.mockScores = (state.progress.player.mockScores || []).concat({ level: session.level, score: result.score, band, date: todayKey() }).slice(-20);
       state.progress.player.estimatedBand = band;
+    } else if (session.kind === "review") {
+      session.questions.forEach((q, i) => {
+        const qpath = `p${i}:g0:q0`;
+        const meta = state.answerMap[qpath];
+        if (!meta) return;
+        let selected = "";
+        if (meta.type === "choice") {
+          const button = $(`.q-options button[data-qpath="${qpath}"].selected`);
+          selected = button ? button.dataset.value : "";
+        } else {
+          const input = $(`input[data-qpath="${qpath}"]`);
+          selected = input ? input.value : "";
+        }
+        if (isCorrect(meta, selected)) {
+          state.progress.wrongAnswers = (state.progress.wrongAnswers || []).filter((item) => !(item.question === q.text && item.answer === q.answer));
+        }
+      });
+      state.progress.lastScore[`review:${session.level}`] = result.score;
+      state.progress.player.estimatedBand = estimateBand();
     } else {
       state.progress.lastScore[`challenge:${session.type}:${session.level}`] = result.score;
       state.progress.player.estimatedBand = estimateBand();
@@ -1565,6 +1681,7 @@
       { type: "vocab", title: "单词闪电战", en: "Vocabulary sprint", icon: "zap", color: "gold", desc: "20 道分级词汇题，训练释义和词形反应速度。" },
       { type: "listening", title: "听力挑战", en: "Listening challenge", icon: "headphones", color: "teal", desc: "10 道听力理解题，可点击题目旁喇叭发音。" },
       { type: "reading", title: "阅读挑战", en: "Reading challenge", icon: "book-open", color: "red", desc: "10 道阅读题，包含原文材料和题型训练。" },
+      { type: "grammar", title: "语法挑战", en: "Grammar challenge", icon: "spell-check", color: "gold", desc: "10 道基础到进阶语法题，训练时态、从句和搭配。" },
       { type: "mixed", title: "混合挑战", en: "Mixed challenge", icon: "shuffle", color: "teal", desc: "词汇、阅读、听力混合 10 题，检验综合水平。" },
     ];
     return `
@@ -1573,7 +1690,7 @@
       </div>
       <div class="filter-bar reveal" style="margin-bottom:16px">
         <span style="font-size:12px;color:var(--muted)">阶段</span>
-        <div class="seg">${["A1", "A2", "B1", "B2", "C1", "IELTS"].map((l) => `<button data-action="set-challenge-level" data-level="${l}" class="${l === level ? "is-active" : ""}">${l}</button>`).join("")}</div>
+        <div class="seg">${["A0", "A1", "A2", "B1", "B2", "C1", "IELTS"].map((l) => `<button data-action="set-challenge-level" data-level="${l}" class="${l === level ? "is-active" : ""}">${l}</button>`).join("")}</div>
       </div>
       <div class="module-grid">
         ${challenges.map((c) => {
@@ -1593,7 +1710,7 @@
     const best = player.bestBand || 0;
     return `
       <div class="section-head reveal">
-        <div><h2>模拟雅思考试</h2><p>从当前阶段自动抽 20 道可判分题，完成后换算预测雅思分。</p></div>
+        <div><h2>模拟雅思考试</h2><p>从当前阶段自动抽 30 道可判分题，覆盖词汇、语法、阅读和听力。</p></div>
         <div class="tag gold">历史最高 Band ${best ? best.toFixed(1) : "—"}</div>
       </div>
       <div class="exam-hero panel reveal">
@@ -1606,11 +1723,11 @@
       </div>
       <div class="filter-bar reveal" style="margin:18px 0 16px">
         <span style="font-size:12px;color:var(--muted)">考试阶段</span>
-        <div class="seg">${["A1", "A2", "B1", "B2", "C1", "IELTS"].map((l) => `<button data-action="set-exam-level" data-level="${l}" class="${l === level ? "is-active" : ""}">${l}</button>`).join("")}</div>
+        <div class="seg">${["A0", "A1", "A2", "B1", "B2", "C1", "IELTS"].map((l) => `<button data-action="set-exam-level" data-level="${l}" class="${l === level ? "is-active" : ""}">${l}</button>`).join("")}</div>
       </div>
       <div class="panel exam-start reveal">
         <div class="exam-start-icon"><i data-lucide="clipboard-check"></i></div>
-        <div class="exam-start-copy"><h3>${level} 模拟考试</h3><p>20 题 · 30 分钟 · 自动判分并换算 Band 分。</p></div>
+        <div class="exam-start-copy"><h3>${level} 模拟考试</h3><p>30 题 · 35 分钟 · 自动判分并换算 Band 分。</p></div>
         <button class="btn primary" data-action="start-mock" data-level="${level}"><i data-lucide="play"></i>开始考试</button>
       </div>
       ${(player.mockScores || []).length ? `<div class="panel panel-pad reveal" style="margin-top:16px"><h3 style="margin-top:0">最近模拟成绩</h3>${player.mockScores.slice(-5).reverse().map((m) => `<div class="progress-label"><span>${esc(m.level)} · ${esc(m.date)}</span><span>${m.score}% · Band ${m.band.toFixed(1)}</span></div>`).join("")}</div>` : ""}`;
@@ -1623,19 +1740,19 @@
       const r = session.result;
       const passLine = r.band
         ? (r.passed ? `已达到目标 Band ${state.progress.target.toFixed(1)}。` : `距离目标 Band ${state.progress.target.toFixed(1)} 还差 ${Math.max(0, state.progress.target - r.band).toFixed(1)}。`)
-        : "继续挑战可以提升熟练度。";
+        : session.kind === "review" ? "本次做对的题已从错题本移除。" : "继续挑战可以提升熟练度。";
       return `
         <div class="exam-result panel reveal">
           <div class="score-orb large"><strong>${r.score}%</strong><span>正确率</span></div>
-          <h2>${r.band ? `预测 Band ${r.band.toFixed(1)}` : "挑战完成"}</h2>
+          <h2>${r.band ? `预测 Band ${r.band.toFixed(1)}` : session.kind === "review" ? "错题复习完成" : "挑战完成"}</h2>
           <p>答对 ${r.correct} / ${r.total} 题，获得 ${r.xp} XP。${passLine}</p>
           <div class="hero-actions">
             <button class="btn primary" data-action="retry-session"><i data-lucide="rotate-ccw"></i>再来一次</button>
-            <button class="btn ghost" data-action="go" data-view="${session.kind === "mock" ? "exam" : "challenges"}"><i data-lucide="arrow-left"></i>返回</button>
+            <button class="btn ghost" data-action="go" data-view="${session.kind === "mock" ? "exam" : session.kind === "review" ? "review" : "challenges"}"><i data-lucide="arrow-left"></i>返回</button>
           </div>
         </div>`;
     }
-    const title = session.kind === "mock" ? `${session.level} 模拟考试` : `题型挑战 · ${session.type}`;
+    const title = session.kind === "mock" ? `${session.level} 模拟考试` : session.kind === "review" ? "错题复习" : `题型挑战 · ${session.type}`;
     return `
       <div class="runner-head reveal">
         <div><h2>${esc(title)}</h2><div class="runner-meta"><span class="tag gold">${session.level}</span><span class="tag">${session.questions.length} 题</span><span class="tag" id="session-timer">${formatClock(session.remaining)}</span></div></div>
@@ -1956,7 +2073,8 @@
       const initial = (state.progress.profile.displayName || user.email || "U").slice(0, 1).toUpperCase();
       const totalQuestions = Object.values(state.progress.stats).reduce((n, s) => n + (s.attempted || 0), 0);
       return `
-        <div class="section-head reveal"><div><h2>账户与同步</h2><p>当前学习进度绑定到你的账户，可以导出备份；云端账户可跨设备同步。</p></div><span class="tag ${isAdminUser(user) ? "red" : user.mode === "supabase" ? "teal" : "gold"}">${isAdminUser(user) ? "管理员" : user.mode === "supabase" ? "云端账户" : "本地账户"}</span></div>
+        <div class="section-head reveal"><div><h2>账户与同步</h2><p>当前学习进度绑定到你的账户，可以导出备份；云端账户可跨设备同步。</p></div><div class="section-head-actions"><button class="btn ghost" data-action="go" data-view="settings"><i data-lucide="settings"></i>设置</button><span class="tag ${isAdminUser(user) ? "red" : user.mode === "supabase" ? "teal" : "gold"}">${isAdminUser(user) ? "管理员" : user.mode === "supabase" ? "云端账户" : "本地账户"}</span></div></div>
+        ${user.mode !== "supabase" ? `<div class="account-warning"><strong>这是本机浏览器账户</strong><p>换到另一个浏览器或手机后无法直接登录。要跨设备使用，请配置右侧的 Supabase 云端账户。</p></div>` : ""}
         <div class="account-layout">
           <section class="panel account-card reveal">
             <div class="account-profile"><div class="account-avatar">${esc(initial)}</div><div><h3>${esc(state.progress.profile.displayName || user.name || "学习者")}</h3><span>${esc(user.email)}</span></div></div>
@@ -1988,22 +2106,26 @@
         ${downloads}`;
     }
     const mode = state.account.formMode;
+    const isRegister = mode.startsWith("register");
+    const cloudRegister = mode === "register-cloud";
     return `
-      <div class="section-head reveal"><div><h2>邮箱注册登录</h2><p>本地账户立即使用；配置 Supabase 后可以跨设备登录并同步学习进度。</p></div><span class="tag gold">网页版 + App 版</span></div>
+      <div class="section-head reveal"><div><h2>邮箱注册登录</h2><p>新注册默认保存到云端，适合跨浏览器和跨设备使用。</p></div><div class="section-head-actions"><button class="btn ghost" data-action="go" data-view="settings"><i data-lucide="settings"></i>设置</button><span class="tag teal">默认云端存储</span></div></div>
+      <div class="account-warning reveal"><strong>为什么换浏览器登录不上？</strong><p>本地账户只保存在当前浏览器。现在注册默认选择云端账户；如果尚未配置 Supabase，可以先切换为“仅本机”，配置后再使用云端注册。</p></div>
       <div class="account-layout">
         <section class="panel account-card reveal">
-          <div class="seg account-tabs"><button data-action="account-mode" data-mode="login" class="${mode === "login" ? "is-active" : ""}">登录</button>${state.config.allowRegistration ? `<button data-action="account-mode" data-mode="register" class="${mode === "register" ? "is-active" : ""}">注册</button>` : ""}</div>
+          <div class="seg account-tabs"><button data-action="account-mode" data-mode="login" class="${mode === "login" ? "is-active" : ""}">登录</button>${state.config.allowRegistration ? `<button data-action="account-mode" data-mode="register-cloud" class="${isRegister ? "is-active" : ""}">注册</button>` : ""}</div>
+          ${isRegister && state.config.allowRegistration ? `<div class="seg storage-tabs"><button data-action="set-register-storage" data-storage="cloud" class="${cloudRegister ? "is-active" : ""}">云端存储（推荐）</button><button data-action="set-register-storage" data-storage="local" class="${!cloudRegister ? "is-active" : ""}">仅本机</button></div>` : ""}
           <form class="account-form" id="account-form">
-            ${mode === "register" ? `<label>昵称<input id="account-name" autocomplete="nickname" placeholder="例如：Wei" /></label>` : ""}
+            ${isRegister ? `<label>昵称<input id="account-name" autocomplete="nickname" placeholder="例如：Wei" /></label>` : ""}
             <label>邮箱<input id="account-email" type="email" autocomplete="email" placeholder="you@example.com" required /></label>
-            <label>密码<input id="account-password" type="password" autocomplete="${mode === "register" ? "new-password" : "current-password"}" placeholder="至少 6 位" required minlength="6" /></label>
-            <button class="btn primary" type="button" data-action="account-submit"><i data-lucide="${mode === "register" ? "user-plus" : "log-in"}"></i>${mode === "register" ? "注册本地账户" : "登录本地账户"}</button>
+            <label>密码<input id="account-password" type="password" autocomplete="${isRegister ? "new-password" : "current-password"}" placeholder="至少 6 位" required minlength="6" /></label>
+            <button class="btn primary" type="button" data-action="account-submit"><i data-lucide="${isRegister ? "user-plus" : "log-in"}"></i>${isRegister ? (cloudRegister ? "注册云端账户" : "注册本机账户") : "登录本机账户"}</button>
           </form>
           <div class="social-login">
             <button class="social-btn wechat" data-action="social-login" data-provider="wechat"><span>微</span>微信登录</button>
             <button class="social-btn qq" data-action="social-login" data-provider="qq"><span>Q</span>QQ 登录</button>
           </div>
-          <p class="account-note">本地账户使用浏览器 localStorage 保存邮箱和加盐密码摘要，不会上传到服务器；换设备后请在右侧配置 Supabase 云端账户。</p>
+          <p class="account-note">云端账户通过 Supabase Auth 保存，支持跨浏览器登录和进度同步；本机账户只保存当前浏览器。</p>
         </section>
         <aside class="panel account-cloud reveal">
           <h3>云端邮箱账户（可选）</h3>
@@ -2041,6 +2163,81 @@
           <p class="account-note">AppSecret 不保存在网页中，请配置到 Cloudflare Worker 的环境变量。微信需要 Open Platform 网站应用，QQ 需要 QQ 互联网站应用，并设置回调域名。</p>
         </div>
         <p class="account-note">当前管理员权限基于邮箱匹配。正式跨设备管理员权限应通过 Supabase Auth 邮箱验证和服务端角色表配置，避免仅靠前端判断被绕过。</p>
+      </section>`;
+  }
+
+  function renderLibrary() {
+    const library = BANK.library || { stories: [], essays: [], reading: [] };
+    const tab = state.libraryTab || "stories";
+    const items = library[tab] || [];
+    const current = items.find((item) => item.id === state.libraryItemId);
+    const tabs = [
+      { id: "stories", label: "英文小故事", icon: "book-heart" },
+      { id: "essays", label: "英文作文", icon: "pen-line" },
+      { id: "reading", label: "阅读理解", icon: "book-open" },
+    ];
+    const tabHtml = `<div class="seg library-tabs">${tabs.map((item) => `<button data-action="set-library-tab" data-tab="${item.id}" class="${tab === item.id ? "is-active" : ""}"><i data-lucide="${item.icon}"></i>${item.label}</button>`).join("")}</div>`;
+    if (current && tab !== "reading") {
+      const isEssay = tab === "essays";
+      return `
+        <div class="section-head reveal"><div><h2>${esc(current.title)}</h2><p>${esc(current.level)} · ${esc(isEssay ? current.prompt : current.summary)}</p></div><button class="btn ghost" data-action="close-library-item"><i data-lucide="arrow-left"></i>返回列表</button></div>
+        <article class="panel library-reader reveal">
+          <div class="library-reader-meta"><span class="tag teal">${esc(current.level)}</span><span class="tag">${isEssay ? "范文" : "故事"}</span><button class="btn teal" data-action="speak-library-item"><i data-lucide="volume-2"></i>朗读全文</button></div>
+          ${isEssay ? `<div class="library-prompt"><strong>写作题目</strong><p>${wordify(current.prompt)}</p></div>` : ""}
+          <div class="library-text">${wordify(current.text)}</div>
+          <div class="library-reader-actions"><button class="btn ghost" data-action="library-next"><i data-lucide="arrow-right"></i>下一篇</button></div>
+        </article>`;
+    }
+    return `
+      <div class="section-head reveal"><div><h2>阅读与写作</h2><p>小故事练语感，作文范文学结构，阅读理解做题型训练。</p></div></div>
+      ${tabHtml}
+      <div class="library-grid">
+        ${items.map((item) => `<article class="module-card ${item.level === "A1" || item.level === "A2" ? "teal" : item.level === "C1" ? "red" : "gold"} reveal" data-action="${tab === "reading" ? "open-reading" : "open-library-item"}" data-id="${item.id}"><div class="module-top"><span class="module-num">${esc(item.level)}</span><span class="tag ${tab === "reading" ? "red" : "teal"}">${tab === "reading" ? "阅读理解" : tab === "essays" ? "作文范文" : "英文故事"}</span></div><h3>${esc(item.title)}</h3><p>${esc(item.summary || item.desc || "")}</p></article>`).join("")}
+      </div>`;
+  }
+
+  function renderSettings() {
+    const voices = (window.speechSynthesis && window.speechSynthesis.getVoices ? window.speechSynthesis.getVoices() : []).filter((v) => /^en/i.test(v.lang));
+    const s = state.settings;
+    return `
+      <div class="section-head reveal"><div><h2>设置</h2><p>声音、朗读兼容和自动鼓励都集中在这里。</p></div><span class="tag teal">个人设置</span></div>
+      <div class="settings-grid">
+        <section class="panel settings-card reveal">
+          <h3>声音与朗读</h3>
+          <button class="setting-row" data-action="toggle-voice"><span><strong>总声音开关</strong><small>关闭后所有单词、例句和 AI 回复都不朗读</small></span><b class="switch ${s.voiceEnabled ? "on" : ""}"></b></button>
+          <button class="setting-row" data-action="toggle-encourage"><span><strong>完成单元自动鼓励</strong><small>完成一个词汇单元后播放随机英文鼓励</small></span><b class="switch ${s.autoEncourage ? "on" : ""}"></b></button>
+          <button class="setting-row" data-action="toggle-compat-setting"><span><strong>兼容朗读模式</strong><small>Via 等浏览器用在线 MP3 播放</small></span><b class="switch ${state.ttsCompat ? "on" : ""}"></b></button>
+          <button class="setting-row" data-action="toggle-lookup-setting"><span><strong>点词讲解</strong><small>点击英文单词弹出翻译和英文释义</small></span><b class="switch ${state.lookupEnabled ? "on" : ""}"></b></button>
+          <label class="setting-field">声音选择<select id="voice-select"><option value="">自动选择英文声音</option>${voices.map((v) => `<option value="${esc(v.voiceURI)}" ${s.voiceURI === v.voiceURI ? "selected" : ""}>${esc(v.name)} · ${esc(v.lang)}</option>`).join("")}</select></label>
+          <label class="setting-field">语速：<span id="voice-rate-value">${s.rate.toFixed(2)}</span><input id="voice-rate" type="range" min="0.55" max="1.25" step="0.05" value="${s.rate}" /></label>
+          <div class="account-actions">
+            <button class="btn teal" data-action="save-settings"><i data-lucide="save"></i>保存设置</button>
+            <button class="btn ghost" data-action="test-sound"><i data-lucide="volume-2"></i>测试声音</button>
+          </div>
+        </section>
+        <section class="panel settings-card reveal">
+          <h3>学习偏好</h3>
+          <div class="setting-info"><strong>当前学习等级</strong><span>${esc(state.practiceLevel)} · ${esc(state.vocabLevel)}</span></div>
+          <div class="setting-info"><strong>词汇单元</strong><span>每单元 20 词，避免一次随机跨度过大</span></div>
+          <div class="setting-info"><strong>错题记录</strong><span>${(state.progress.wrongAnswers || []).length} 道待复习</span></div>
+          <p class="account-note">朗读设置按浏览器保存；如果使用云端账户，学习进度仍按账户同步。</p>
+        </section>
+      </div>`;
+  }
+
+  function renderReview() {
+    const wrong = state.progress.wrongAnswers || [];
+    const counts = wrong.reduce((acc, item) => {
+      acc[item.skill] = (acc[item.skill] || 0) + 1;
+      return acc;
+    }, {});
+    return `
+      <div class="section-head reveal"><div><h2>错题复习</h2><p>自动收集答错的题目，重新练习可以逐条移除。</p></div><button class="btn primary" data-action="start-review" ${wrong.length ? "" : "disabled"}><i data-lucide="play"></i>开始复习</button></div>
+      <div class="review-stats reveal">
+        ${["reading", "listening", "vocab", "writing"].map((skill) => `<div class="panel review-stat"><strong>${counts[skill] || 0}</strong><span>${SKILL_META[skill] ? SKILL_META[skill].label : "其他"}错题</span></div>`).join("")}
+      </div>
+      <section class="panel review-list reveal">
+        ${wrong.length ? wrong.slice(-30).reverse().map((item, i) => `<div class="review-item"><div class="review-no">${wrong.length - i}</div><div><strong>${wordify(item.question || "题目")}</strong><p>正确答案：<b>${esc(item.answer || "")}</b></p><p>${esc(item.explanation || "回到原文或录音核对关键词和同义替换。")}</p><span>${esc(item.skill || "练习")} · ${item.timestamp ? new Date(item.timestamp).toLocaleDateString("zh-CN") : ""}</span></div><button class="btn ghost" data-action="remove-wrong" data-id="${esc(item.id)}"><i data-lucide="trash-2"></i></button></div>`).join("") : `<div class="empty-state"><i data-lucide="badge-check"></i><p>暂时没有错题，继续练习吧。</p></div>`}
       </section>`;
   }
 
@@ -2340,12 +2537,18 @@
   }
 
   function renderVocab() {
-    const levels = ["A1", "A2", "B1", "B2", "C1"];
+    const levels = ["A0", "A1", "A2", "B1", "B2", "C1"];
     const vocab = getLevelVocab(state.vocabLevel);
     if (!vocab.length) return `<div class="panel empty-state"><p>暂无词汇</p></div>`;
-    if (state.vocabDeck.length === 0 || state.vocabDeckKey !== state.vocabLevel) {
+    const unitSize = 20;
+    const unitCount = Math.max(1, Math.ceil(vocab.length / unitSize));
+    state.vocabUnit = Math.min(Math.max(1, state.vocabUnit || 1), unitCount);
+    if (state.vocabDeck.length === 0 || state.vocabDeckKey !== `${state.vocabLevel}:${state.vocabUnit}`) {
       resetVocabDeck();
     }
+    const unitStart = (state.vocabUnit - 1) * unitSize;
+    const unitWords = vocab.slice(unitStart, unitStart + unitSize);
+    const unitKnown = unitWords.filter((item) => state.progress.vocab.known.includes(`${state.vocabLevel}:${item.w}`)).length;
     const idx = state.vocabDeck[Math.min(state.vocabIndex, state.vocabDeck.length - 1)];
     const card = vocab[idx];
     const prefetchList = [];
@@ -2366,6 +2569,11 @@
       <div class="filter-bar reveal" style="margin-bottom:14px">
         <span style="font-size:12px;color:var(--muted)">阶段</span>
         <div class="seg">${levels.map((level) => `<button data-action="set-vocab-level" data-level="${level}" class="${level === state.vocabLevel ? "is-active" : ""}">${level}</button>`).join("")}</div>
+      </div>
+      <div class="unit-bar reveal">
+        <button class="btn ghost" data-action="vocab-unit-prev" ${state.vocabUnit <= 1 ? "disabled" : ""}><i data-lucide="chevron-left"></i>上一单元</button>
+        <div><strong>Unit ${state.vocabUnit}</strong><span>${unitStart + 1}–${unitStart + unitWords.length} · 已掌握 ${unitKnown}/${unitWords.length}</span></div>
+        <button class="btn ghost" data-action="vocab-unit-next" ${state.vocabUnit >= unitCount ? "disabled" : ""}>下一单元<i data-lucide="chevron-right"></i></button>
       </div>
       <div class="card-deck reveal">
         <div class="flash-card" data-action="flip-card">
@@ -2391,19 +2599,20 @@
           <button class="btn ghost" data-action="vocab-again"><i data-lucide="rotate-ccw"></i>还不熟</button>
           <button class="btn primary" data-action="vocab-known"><i data-lucide="check"></i>认识了</button>
         </div>
-        <div class="deck-progress">${state.vocabLevel} · ${pos} / ${total} · 单词可点击发音</div>
+        <div class="deck-progress">${state.vocabLevel} · Unit ${state.vocabUnit} · ${pos} / ${total} · 单词可点击发音</div>
       </div>`;
   }
 
   function renderSpeaking() {
-    const levels = ["A1", "A2", "B1", "B2", "C1", "IELTS"];
+    const levels = ["A0", "A1", "A2", "B1", "B2", "C1", "IELTS"];
     const staged = BANK.staged || {};
     const level = state.speakingLevel;
     let items = [];
     if (level === "IELTS") {
       items = BANK.speaking || [];
     } else {
-      const set = (staged.speaking || []).find((s) => s.level === level);
+      const effectiveLevel = level === "A0" ? "A1" : level;
+      const set = (staged.speaking || []).find((s) => s.level === effectiveLevel);
       items = set ? set.items.map((item, i) => ({ id: `${level}-${i}`, set: `${level} 分级口语`, question: item.q, answer: item.a })) : [];
     }
     if (!items.length) return `<div class="panel empty-state"><p>暂无口语题目</p></div>`;
@@ -2543,8 +2752,20 @@
       return;
     }
     if (action === "account-mode") {
-      state.account.formMode = target.dataset.mode === "register" ? "register" : "login";
+      state.account.formMode = target.dataset.mode === "login" ? "login" : "register-cloud";
+      if (state.account.formMode.startsWith("register")) state.account.registerStorage = "cloud";
       render();
+      return;
+    }
+    if (action === "set-register-storage") {
+      state.account.registerStorage = target.dataset.storage === "local" ? "local" : "cloud";
+      state.account.formMode = state.account.registerStorage === "local" ? "register-local" : "register-cloud";
+      $$(".storage-tabs button").forEach((btn) => btn.classList.toggle("is-active", btn.dataset.storage === state.account.registerStorage));
+      const submit = $("[data-action=account-submit]");
+      if (submit) {
+        submit.innerHTML = `<i data-lucide="user-plus"></i>${state.account.registerStorage === "cloud" ? "注册云端账户" : "注册本机账户"}`;
+        refreshIcons();
+      }
       return;
     }
     if (action === "account-submit") {
@@ -2555,8 +2776,22 @@
         toast("请填写邮箱和密码");
         return;
       }
-      if (state.account.formMode === "register") registerLocal(email, password, name);
-      else loginLocal(email, password);
+      if (state.account.formMode.startsWith("register")) {
+        if (state.account.registerStorage === "cloud") {
+          state.account.cloud.url = ($("#supabase-url") ? $("#supabase-url").value : state.account.cloud.url).trim();
+          state.account.cloud.anonKey = ($("#supabase-anon-key") ? $("#supabase-anon-key").value : state.account.cloud.anonKey).trim();
+          saveCloudSettings();
+          try {
+            await supabaseSignUp(email, password);
+          } catch (e) {
+            toast(e.message || "云端注册失败，请检查 Supabase 配置");
+          }
+        } else {
+          registerLocal(email, password, name);
+        }
+      } else {
+        loginLocal(email, password);
+      }
       return;
     }
     if (action === "social-login") {
@@ -2712,6 +2947,96 @@
       toast("AI 设置已保存在本机");
       return;
     }
+    if (action === "toggle-voice") {
+      state.settings.voiceEnabled = !state.settings.voiceEnabled;
+      saveUserSettings();
+      render();
+      return;
+    }
+    if (action === "set-library-tab") {
+      state.libraryTab = target.dataset.tab;
+      state.libraryItemId = "";
+      render();
+      return;
+    }
+    if (action === "open-library-item") {
+      state.libraryItemId = target.dataset.id;
+      render();
+      return;
+    }
+    if (action === "close-library-item") {
+      state.libraryItemId = "";
+      render();
+      return;
+    }
+    if (action === "speak-library-item") {
+      const item = (BANK.library && BANK.library[state.libraryTab] || []).find((entry) => entry.id === state.libraryItemId);
+      if (item) speakText(item.text || item.prompt || "", state.settings.rate);
+      return;
+    }
+    if (action === "library-next") {
+      const items = (BANK.library && BANK.library[state.libraryTab]) || [];
+      const index = items.findIndex((item) => item.id === state.libraryItemId);
+      state.libraryItemId = items[(index + 1) % items.length] ? items[(index + 1) % items.length].id : "";
+      render();
+      return;
+    }
+    if (action === "open-reading") {
+      setView("reading", target.dataset.id);
+      return;
+    }
+    if (action === "toggle-encourage") {
+      state.settings.autoEncourage = !state.settings.autoEncourage;
+      saveUserSettings();
+      render();
+      return;
+    }
+    if (action === "toggle-compat-setting") {
+      state.ttsCompat = !state.ttsCompat;
+      state.settings.ttsCompat = state.ttsCompat;
+      saveUserSettings();
+      render();
+      return;
+    }
+    if (action === "toggle-lookup-setting") {
+      state.lookupEnabled = !state.lookupEnabled;
+      saveUserSettings();
+      const btn = $("#lookup-toggle");
+      if (btn) btn.classList.toggle("is-active", state.lookupEnabled);
+      if (!state.lookupEnabled) hideWordPopover();
+      render();
+      return;
+    }
+    if (action === "save-settings") {
+      state.settings.voiceURI = $("#voice-select") ? $("#voice-select").value : "";
+      state.settings.rate = $("#voice-rate") ? Number($("#voice-rate").value) : state.settings.rate;
+      state.settings.ttsCompat = state.ttsCompat;
+      saveUserSettings();
+      toast("设置已保存");
+      render();
+      return;
+    }
+    if (action === "test-sound") {
+      speakText("Hello. This is your English learning voice.", state.settings.rate);
+      return;
+    }
+    if (action === "start-review") {
+      startReviewSession();
+      return;
+    }
+    if (action === "remove-wrong") {
+      const id = target.dataset.id;
+      state.progress.wrongAnswers = (state.progress.wrongAnswers || []).filter((item) => item.id !== id);
+      save();
+      render();
+      return;
+    }
+    if (action === "clear-wrong") {
+      state.progress.wrongAnswers = [];
+      save();
+      render();
+      return;
+    }
     if (action === "toggle-tts-compat") {
       state.ttsCompat = !state.ttsCompat;
       saveTtsSettings();
@@ -2816,6 +3141,20 @@
     }
     if (action === "set-vocab-level") {
       state.vocabLevel = target.dataset.level;
+      state.vocabUnit = 1;
+      resetVocabDeck();
+      render();
+      return;
+    }
+    if (action === "vocab-unit-prev") {
+      state.vocabUnit = Math.max(1, state.vocabUnit - 1);
+      resetVocabDeck();
+      render();
+      return;
+    }
+    if (action === "vocab-unit-next") {
+      const vocab = getLevelVocab(state.vocabLevel);
+      state.vocabUnit = Math.min(Math.ceil(vocab.length / 20), state.vocabUnit + 1);
       resetVocabDeck();
       render();
       return;
@@ -2870,6 +3209,13 @@
     }
     let correct = 0;
     let total = 0;
+    const statSkill = state.currentTest.statSkill || (state.currentTest.skill === "reading"
+      ? "reading"
+      : state.currentTest.skill === "listening"
+        ? "listening"
+        : state.currentTest.skill === "writing"
+          ? "writing"
+          : "vocab");
 
     Object.keys(state.answerMap).forEach((qpath) => {
       const meta = state.answerMap[qpath];
@@ -2907,15 +3253,35 @@
           slot.innerHTML = buildExplanation(meta, ok);
         }
       }
+      if (selected) {
+        const wrongId = `${statSkill}:${state.currentTest.id}:${qpath}`;
+        const wrongList = state.progress.wrongAnswers || [];
+        if (!ok) {
+          const record = {
+            id: wrongId,
+            skill: statSkill,
+            testId: state.currentTest.id,
+            qpath,
+            question: meta.question || "",
+            answer: meta.answer || "",
+            accepted: meta.accepted || [],
+            options: meta.options || [],
+            type: meta.type,
+            context: meta.context || "",
+            explanation: meta.explain || `正确答案是：${meta.answer || ""}`,
+            selected,
+            timestamp: Date.now(),
+          };
+          const existing = wrongList.findIndex((item) => item.id === wrongId);
+          if (existing >= 0) wrongList[existing] = record;
+          else wrongList.push(record);
+          state.progress.wrongAnswers = wrongList.slice(-200);
+        } else {
+          state.progress.wrongAnswers = wrongList.filter((item) => item.id !== wrongId);
+        }
+      }
     });
 
-    const statSkill = state.currentTest.statSkill || (state.currentTest.skill === "reading"
-      ? "reading"
-      : state.currentTest.skill === "listening"
-        ? "listening"
-        : state.currentTest.skill === "writing"
-          ? "writing"
-          : "vocab");
     const score = total ? Math.round((correct / total) * 100) : 0;
     const stat = state.progress.stats[statSkill];
     stat.attempted += total;
@@ -3018,9 +3384,21 @@
     if (known && !state.progress.vocab.known.includes(key)) {
       state.progress.vocab.known.push(key);
     }
-    state.vocabDeck.splice(state.vocabIndex, 1);
-    if (!known) state.vocabDeck.push(idx);
-    if (state.vocabIndex >= state.vocabDeck.length) state.vocabIndex = 0;
+    const unitStart = (state.vocabUnit - 1) * 20;
+    const unitWords = vocab.slice(unitStart, unitStart + 20);
+    const unitComplete = unitWords.length > 0 && unitWords.every((item) => state.progress.vocab.known.includes(`${state.vocabLevel}:${item.w}`));
+    const completedUnit = state.progress.vocabUnits[state.vocabLevel] || 0;
+    if (unitComplete && completedUnit < state.vocabUnit) {
+      state.progress.vocabUnits[state.vocabLevel] = state.vocabUnit;
+      playEncouragement();
+      toast(`Unit ${state.vocabUnit} 完成，继续保持！`);
+    }
+    if (!known) {
+      const [item] = state.vocabDeck.splice(state.vocabIndex, 1);
+      state.vocabDeck.push(item);
+    } else {
+      state.vocabIndex = (state.vocabIndex + 1) % state.vocabDeck.length;
+    }
     save();
     render();
   }
@@ -3139,6 +3517,13 @@
         setView(btn.dataset.view);
       });
     });
+    document.addEventListener("click", (e) => {
+      const btn = e.target.closest && e.target.closest(".mobile-bottom-nav button");
+      if (!btn) return;
+      if (state.view === "session" && btn.dataset.view !== "session") stopSessionTimer();
+      if (state.view === "ai" && btn.dataset.view !== "ai") stopAiListening(true);
+      setView(btn.dataset.view);
+    });
     $(".source-link").addEventListener("click", () => setView("about"));
     $("#menu-btn").addEventListener("click", () => {
       $("body").classList.toggle("sidebar-open");
@@ -3174,6 +3559,7 @@
   function init() {
     loadAiSettings();
     loadTtsSettings();
+    loadUserSettings();
     loadAppConfig();
     loadAccountSession();
     handleOAuthRedirect();
@@ -3183,6 +3569,8 @@
     bindEvents();
     const ttsBtn = $("#tts-compat");
     if (ttsBtn) ttsBtn.classList.toggle("is-active", state.ttsCompat);
+    const lookupBtn = $("#lookup-toggle");
+    if (lookupBtn) lookupBtn.classList.toggle("is-active", state.lookupEnabled);
     if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
       navigator.serviceWorker.register("sw.js").catch(() => {});
     }

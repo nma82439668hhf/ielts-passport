@@ -16,6 +16,8 @@ const APP_SHELL = [
   "./data/vocab-levels.js",
   "./data/vocab-quiz.js",
   "./data/staged.js",
+  "./data/library.js",
+  "./data/grammar.js",
   "./data/reading.js",
   "./data/listening.js",
   "./data/writing.js",

@@ -1,7 +1,6 @@
 {
-  "webVersion": "1.0.1",
-  "releasedAt": "2026-09-26T05:40:00.000Z",
+  "webVersion": "1.0.2",
+  "releasedAt": "2026-09-26T07:22:12.256Z",
   "siteUrl": "https://nma82439668hhf.github.io/ielts-passport/",
-  "mode": "hybrid",
-  "notes": "Offline bundled app with cloud update check and fallback."
+  "mode": "hybrid"
 }

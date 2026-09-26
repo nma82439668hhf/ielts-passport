@@ -42,6 +42,9 @@
       <button class="nav-item" data-view="practice">
         <i data-lucide="book-open-check"></i><span>题库练习</span>
       </button>
+      <button class="nav-item" data-view="library">
+        <i data-lucide="library"></i><span>阅读与写作</span>
+      </button>
       <button class="nav-item" data-view="challenges">
         <i data-lucide="trophy"></i><span>题型挑战</span>
       </button>
@@ -62,6 +65,9 @@
       </button>
       <button class="nav-item" data-view="account">
         <i data-lucide="user-round"></i><span>账户与同步</span>
+      </button>
+      <button class="nav-item" data-view="settings">
+        <i data-lucide="settings"></i><span>设置</span>
       </button>
     </nav>
 
@@ -119,6 +125,14 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+  <nav class="mobile-bottom-nav" id="mobile-bottom-nav" aria-label="手机底部导航">
+    <button data-view="home"><i data-lucide="house"></i><span>今日</span></button>
+    <button data-view="practice"><i data-lucide="book-open-check"></i><span>学习</span></button>
+    <button data-view="ai"><i data-lucide="bot"></i><span>AI</span></button>
+    <button data-view="review"><i data-lucide="notebook-pen"></i><span>错题</span></button>
+    <button data-view="account"><i data-lucide="user-round"></i><span>我的</span></button>
+  </nav>
+
   <aside class="word-popover" id="word-popover" hidden>
     <div class="word-popover-head">
       <div>
@@ -156,6 +170,8 @@
   <script src="data/vocab-levels.js"></script>
   <script src="data/vocab-quiz.js"></script>
   <script src="data/staged.js"></script>
+  <script src="data/library.js"></script>
+  <script src="data/grammar.js"></script>
   <script src="data/reading.js"></script>
   <script src="data/listening.js"></script>
   <script src="data/writing.js"></script>
