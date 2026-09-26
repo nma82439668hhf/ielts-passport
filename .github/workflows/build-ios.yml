@@ -26,6 +26,8 @@ jobs:
           pnpm --dir apps/mobile prepare:web
           cd apps/mobile
           pnpm exec cap add ios
+          cd ../..
+          node scripts/configure-native-app.mjs ios
       - name: Build unsigned iOS app
         run: |
           cd apps/mobile/ios/App

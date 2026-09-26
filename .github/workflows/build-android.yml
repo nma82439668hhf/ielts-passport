@@ -31,13 +31,15 @@ jobs:
       - name: Install Android SDK packages
         run: |
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          sdkmanager "platform-tools" "platforms;android-34" "platforms;android-35" "build-tools;34.0.0" "build-tools;35.0.0"
       - name: Install dependencies and generate Android project
         run: |
           pnpm --dir apps/mobile install --no-frozen-lockfile
           pnpm --dir apps/mobile prepare:web
           cd apps/mobile
           pnpm exec cap add android
+          cd ../..
+          node scripts/configure-native-app.mjs android
       - name: Build debug APK
         run: |
           cd apps/mobile/android
