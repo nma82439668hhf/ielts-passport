@@ -9,10 +9,6 @@ on:
 permissions:
   contents: write
 
-concurrency:
-  group: app-release-v1.0.1
-  cancel-in-progress: false
-
 jobs:
   build:
     strategy:
