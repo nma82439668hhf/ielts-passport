@@ -3000,6 +3000,88 @@ button {
   }
 }
 
+.social-login {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.social-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  border: 0;
+  border-radius: var(--pill);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.social-btn span {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  font-size: 12px;
+}
+
+.social-btn.wechat {
+  color: #ffffff;
+  background: linear-gradient(135deg, #20c56b, #12a353);
+  box-shadow: 0 10px 22px rgba(32, 197, 107, 0.22);
+}
+
+.social-btn.qq {
+  color: #ffffff;
+  background: linear-gradient(135deg, #2f9cf4, #1677d2);
+  box-shadow: 0 10px 22px rgba(47, 156, 244, 0.22);
+}
+
+.admin-oauth {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.admin-oauth h3 {
+  margin: 0 0 12px;
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.admin-oauth label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.admin-oauth input {
+  min-height: 40px;
+  padding: 8px 10px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  font-family: inherit;
+  font-size: 13px;
+}
+
+@media (max-width: 760px) {
+  .social-login {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

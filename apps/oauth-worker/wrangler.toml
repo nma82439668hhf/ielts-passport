@@ -1,0 +1,7 @@
+name = "ielts-passport-oauth"
+main = "src/index.js"
+compatibility_date = "2026-09-26"
+
+[vars]
+SITE_URL = "https://nma82439668hhf.github.io"
+

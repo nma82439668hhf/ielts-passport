@@ -189,7 +189,7 @@
       installPrompt: null,
       formMode: "login",
     },
-    config: { requireLogin: true, allowRegistration: true },
+    config: { requireLogin: true, allowRegistration: true, oauth: { wechatAppId: "", qqAppId: "", workerUrl: "" } },
   };
 
   const dictionaryShardPromises = new Map();
@@ -260,7 +260,10 @@
   function loadAppConfig() {
     try {
       const raw = localStorage.getItem("ielts_app_config");
-      if (raw) state.config = { ...state.config, ...JSON.parse(raw) };
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        state.config = { ...state.config, ...parsed, oauth: { ...state.config.oauth, ...(parsed.oauth || {}) } };
+      }
     } catch (e) {
       /* ignore */
     }
@@ -346,6 +349,7 @@
   function accountProgressKey(user) {
     if (!user) return STORAGE_KEY;
     if (user.mode === "supabase") return `${STORAGE_KEY}:supabase:${user.id || user.email}`;
+    if (user.mode === "social") return `${STORAGE_KEY}:social:${user.provider}:${user.id}`;
     return `${STORAGE_KEY}:local:${user.email}`;
   }
 
@@ -448,6 +452,67 @@
     switchAccountProgress(null);
     render();
     toast("已退出登录，当前使用访客进度");
+  }
+
+  function socialCallbackUrl(provider) {
+    const url = new URL(location.href);
+    url.search = "";
+    url.hash = "";
+    url.searchParams.set("oauth_provider", provider);
+    return url.toString();
+  }
+
+  function startSocialLogin(provider) {
+    const config = state.config.oauth || {};
+    const appId = provider === "wechat" ? config.wechatAppId : config.qqAppId;
+    if (!appId) {
+      toast(provider === "wechat" ? "管理员尚未配置微信 AppID" : "管理员尚未配置 QQ AppID");
+      return;
+    }
+    const redirect = socialCallbackUrl(provider);
+    const stateToken = randomSalt().slice(0, 16);
+    sessionStorage.setItem("ielts_oauth_state", stateToken);
+    const url = provider === "wechat"
+      ? `https://open.weixin.qq.com/connect/qrconnect?appid=${encodeURIComponent(appId)}&redirect_uri=${encodeURIComponent(redirect)}&response_type=code&scope=snsapi_login&state=${stateToken}#wechat_redirect`
+      : `https://graph.qq.com/oauth2.0/authorize?response_type=code&client_id=${encodeURIComponent(appId)}&redirect_uri=${encodeURIComponent(redirect)}&state=${stateToken}`;
+    location.href = url;
+  }
+
+  async function handleSocialCallback(provider, code) {
+    const config = state.config.oauth || {};
+    if (!config.workerUrl) {
+      toast("社交登录回调服务尚未配置");
+      return;
+    }
+    const redirect = socialCallbackUrl(provider);
+    const url = `${config.workerUrl.replace(/\/$/, "")}/oauth/${encodeURIComponent(provider)}?code=${encodeURIComponent(code)}&redirect_uri=${encodeURIComponent(redirect)}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "社交登录失败");
+    const id = data.openid || data.id || data.user_id;
+    const user = {
+      mode: "social",
+      provider,
+      id,
+      email: data.email || `${provider}_${id}@social.local`,
+      name: data.nickname || data.name || (provider === "wechat" ? "微信用户" : "QQ 用户"),
+      avatar: data.avatar || "",
+    };
+    state.account.user = user;
+    state.account.mode = "social";
+    saveAccountSession();
+    switchAccountProgress(user, true);
+    render();
+    toast(provider === "wechat" ? "微信登录成功" : "QQ 登录成功");
+  }
+
+  function handleOAuthRedirect() {
+    const params = new URLSearchParams(location.search);
+    const provider = params.get("oauth_provider");
+    const code = params.get("code");
+    if (!provider || !code) return;
+    history.replaceState({}, "", location.pathname);
+    handleSocialCallback(provider, code).catch((e) => toast(e.message || "社交登录失败"));
   }
 
   async function supabaseSignUp(email, password) {
@@ -1933,6 +1998,10 @@
             <label>密码<input id="account-password" type="password" autocomplete="${mode === "register" ? "new-password" : "current-password"}" placeholder="至少 6 位" required minlength="6" /></label>
             <button class="btn primary" type="button" data-action="account-submit"><i data-lucide="${mode === "register" ? "user-plus" : "log-in"}"></i>${mode === "register" ? "注册本地账户" : "登录本地账户"}</button>
           </form>
+          <div class="social-login">
+            <button class="social-btn wechat" data-action="social-login" data-provider="wechat"><span>微</span>微信登录</button>
+            <button class="social-btn qq" data-action="social-login" data-provider="qq"><span>Q</span>QQ 登录</button>
+          </div>
           <p class="account-note">本地账户使用浏览器 localStorage 保存邮箱和加盐密码摘要，不会上传到服务器；换设备后请在右侧配置 Supabase 云端账户。</p>
         </section>
         <aside class="panel account-cloud reveal">
@@ -1961,6 +2030,14 @@
         <div class="admin-accounts">
           <h3>本机邮箱账户（${accounts.length}）</h3>
           ${accounts.length ? accounts.map((a) => `<div class="admin-account-row"><strong>${esc(a.name || a.email)}</strong><span>${esc(a.email)}</span><em>${a.createdAt ? new Date(a.createdAt).toLocaleDateString("zh-CN") : ""}</em></div>`).join("") : `<p class="account-note">当前浏览器还没有本地邮箱账户。</p>`}
+        </div>
+        <div class="admin-oauth">
+          <h3>微信 / QQ 登录配置</h3>
+          <label>微信网站应用 AppID<input id="wechat-app-id" value="${esc(state.config.oauth.wechatAppId)}" placeholder="wx..." /></label>
+          <label>QQ 互联应用 AppID<input id="qq-app-id" value="${esc(state.config.oauth.qqAppId)}" placeholder="10..." /></label>
+          <label>OAuth Worker 地址<input id="oauth-worker-url" value="${esc(state.config.oauth.workerUrl)}" placeholder="https://your-worker.workers.dev" /></label>
+          <button class="btn teal" data-action="save-oauth-config"><i data-lucide="save"></i>保存社交登录配置</button>
+          <p class="account-note">AppSecret 不保存在网页中，请配置到 Cloudflare Worker 的环境变量。微信需要 Open Platform 网站应用，QQ 需要 QQ 互联网站应用，并设置回调域名。</p>
         </div>
         <p class="account-note">当前管理员权限基于邮箱匹配。正式跨设备管理员权限应通过 Supabase Auth 邮箱验证和服务端角色表配置，避免仅靠前端判断被绕过。</p>
       </section>`;
@@ -2461,11 +2538,24 @@
       else loginLocal(email, password);
       return;
     }
+    if (action === "social-login") {
+      startSocialLogin(target.dataset.provider);
+      return;
+    }
     if (action === "save-cloud-settings") {
       state.account.cloud.url = ($("#supabase-url") ? $("#supabase-url").value : "").trim();
       state.account.cloud.anonKey = ($("#supabase-anon-key") ? $("#supabase-anon-key").value : "").trim();
       saveCloudSettings();
       toast("云端配置已保存在本机");
+      return;
+    }
+    if (action === "save-oauth-config") {
+      if (!isAdminUser()) return;
+      state.config.oauth.wechatAppId = ($("#wechat-app-id") ? $("#wechat-app-id").value : "").trim();
+      state.config.oauth.qqAppId = ($("#qq-app-id") ? $("#qq-app-id").value : "").trim();
+      state.config.oauth.workerUrl = ($("#oauth-worker-url") ? $("#oauth-worker-url").value : "").trim();
+      saveAppConfig();
+      toast("社交登录配置已保存");
       return;
     }
     if (action === "cloud-signup" || action === "cloud-signin") {
@@ -3048,6 +3138,7 @@
     loadTtsSettings();
     loadAppConfig();
     loadAccountSession();
+    handleOAuthRedirect();
     if (state.account.user) switchAccountProgress(state.account.user);
     if (state.config.requireLogin && !state.account.user) state.view = "account";
     autoEnableCompatIfNeeded();
