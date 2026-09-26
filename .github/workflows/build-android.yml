@@ -7,7 +7,11 @@ on:
       - "v*"
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: app-release-v1.0.1
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -48,3 +52,21 @@ jobs:
           name: android-debug-apk
           path: apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-debug-apk
+          path: release
+      - name: Rename Android APK
+        run: mv release/app-debug.apk release/IELTS-Passport-Android-Debug-1.0.1.apk
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.1
+          name: IELTS Passport v1.0.1
+          body: Android APK with hybrid cloud update, WeChat/QQ login support, Vega authorship notice and support QR.
+          files: release/*.apk
+          make_latest: true

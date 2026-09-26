@@ -1,9 +1,11 @@
-const CACHE_NAME = "ielts-passport-v2";
+const CACHE_NAME = "ielts-passport-v3";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
+  "./hybrid-update.js",
+  "./version.json",
   "./manifest.webmanifest",
   "./favicon.svg",
   "./assets/vega-support.jpg",
@@ -19,7 +21,9 @@ const APP_SHELL = [
   "./data/writing.js",
   "./data/speaking.js",
   "./data/sources.js",
-  "./data/vocab-meta.js"
+  "./data/vocab-meta.js",
+  "./data/version.js",
+  "./data/remote-version.js"
 ];
 
 self.addEventListener("install", (event) => {

@@ -7,7 +7,11 @@ on:
       - "v*"
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: app-release-v1.0.1
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -44,3 +48,25 @@ jobs:
           name: ${{ matrix.artifact }}
           path: apps/desktop/dist/**
           if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Normalize desktop asset names
+        run: |
+          mkdir -p release
+          cp "artifacts/IELTS Passport Setup 1.0.1.exe" release/IELTS-Passport-Windows-Setup-1.0.1.exe
+          cp "artifacts/IELTS Passport-1.0.1-arm64.dmg" release/IELTS-Passport-macOS-arm64-1.0.1.dmg
+          cp "artifacts/IELTS Passport-1.0.1.AppImage" release/IELTS-Passport-Linux-1.0.1.AppImage
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.1
+          name: IELTS Passport v1.0.1
+          body: Desktop apps with hybrid cloud update, WeChat/QQ login support, Vega authorship notice and support QR.
+          files: release/*
+          make_latest: true

@@ -1971,6 +1971,7 @@
               <button class="btn ghost" data-action="export-progress"><i data-lucide="download"></i>导出学习进度</button>
               <label class="btn ghost file-button"><i data-lucide="upload"></i>导入学习进度<input type="file" id="import-progress" accept="application/json" hidden /></label>
               <button class="btn ghost" data-action="install-app"><i data-lucide="smartphone"></i>安装 App 版本</button>
+              <button class="btn ghost" data-action="check-app-update"><i data-lucide="refresh-cw"></i>检查 App 云端更新</button>
               <button class="btn ghost" data-action="logout-account"><i data-lucide="log-out"></i>退出登录</button>
             </div>
           </section>
@@ -2046,11 +2047,11 @@
   function renderAppDownloads() {
     const base = "https://github.com/nma82439668hhf/ielts-passport/releases/latest/download";
     const items = [
-      { name: "Windows", file: "IELTS-Passport-Windows-Setup-1.0.0.exe", icon: "monitor", note: "NSIS 安装版，未签名" },
-      { name: "macOS", file: "IELTS-Passport-macOS-arm64-1.0.0.dmg", icon: "laptop", note: "Apple 芯片 DMG，未签名" },
-      { name: "Linux", file: "IELTS-Passport-Linux-1.0.0.AppImage", icon: "terminal", note: "AppImage，免安装" },
-      { name: "Android", file: "IELTS-Passport-Android-Debug-1.0.0.apk", icon: "smartphone", note: "Debug APK，可直接安装" },
-      { name: "iOS", file: "IELTS-Passport-iOS-Unsigned-1.0.0.ipa", icon: "apple", note: "未签名 IPA，需要 Apple 证书" },
+      { name: "Windows", file: "IELTS-Passport-Windows-Setup-1.0.1.exe", icon: "monitor", note: "NSIS 安装版，未签名" },
+      { name: "macOS", file: "IELTS-Passport-macOS-arm64-1.0.1.dmg", icon: "laptop", note: "Apple 芯片 DMG，未签名" },
+      { name: "Linux", file: "IELTS-Passport-Linux-1.0.1.AppImage", icon: "terminal", note: "AppImage，免安装" },
+      { name: "Android", file: "IELTS-Passport-Android-Debug-1.0.1.apk", icon: "smartphone", note: "Debug APK，可直接安装" },
+      { name: "iOS", file: "IELTS-Passport-iOS-Unsigned-1.0.1.ipa", icon: "apple", note: "未签名 IPA，需要 Apple 证书" },
     ];
     return `
       <section class="app-download-section reveal">
@@ -2614,6 +2615,11 @@
     }
     if (action === "open-support") {
       openSupport();
+      return;
+    }
+    if (action === "check-app-update") {
+      if (window.IELTS_HYBRID_UPDATE && window.IELTS_HYBRID_UPDATE.check) window.IELTS_HYBRID_UPDATE.check(true);
+      else toast("当前版本未启用混合更新");
       return;
     }
     if (action === "admin-toggle-login") {

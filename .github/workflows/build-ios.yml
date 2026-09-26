@@ -7,7 +7,11 @@ on:
       - "v*"
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: app-release-v1.0.1
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -38,3 +42,21 @@ jobs:
           name: ios-unsigned-ipa
           path: apps/mobile/ios/App/IELTS-Passport-unsigned.ipa
           if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ios-unsigned-ipa
+          path: release
+      - name: Rename iOS IPA
+        run: mv release/IELTS-Passport-unsigned.ipa release/IELTS-Passport-iOS-Unsigned-1.0.1.ipa
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.1
+          name: IELTS Passport v1.0.1
+          body: Unsigned iOS IPA with hybrid cloud update, WeChat/QQ login support, Vega authorship notice and support QR. Apple signing is required for installation on a device.
+          files: release/*.ipa
+          make_latest: true

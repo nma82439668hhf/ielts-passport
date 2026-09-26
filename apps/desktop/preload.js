@@ -1,3 +1,1 @@
-window.addEventListener("DOMContentLoaded", () => {
-  document.documentElement.dataset.desktopApp = "true";
-});
+document.documentElement.dataset.desktopApp = "true";
