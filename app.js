@@ -14,6 +14,7 @@
     challenges: "题型挑战",
     exam: "模拟考试",
     videos: "精选视频",
+    ai: "AI 英语对话",
     session: "答题中",
     reading: "阅读练习",
     listening: "听力练习",
@@ -31,6 +32,98 @@
     speaking: { label: "口语", icon: "mic-2", color: "teal" },
     vocab: { label: "词汇", icon: "notebook-tabs", color: "gold" },
   };
+
+  const AI_SCENARIOS = {
+    intro: {
+      title: "自我介绍",
+      en: "Introduce yourself",
+      level: "A1",
+      goal: "练习姓名、年龄、家乡和日常信息。",
+      steps: [
+        { ai: "Hello! I'm your English partner. What's your name?", hint: "My name is ... / I'm ...", keywords: ["name", "i am", "i'm", "call me"] },
+        { ai: "Nice to meet you! Where are you from?", hint: "I'm from ... / I live in ...", keywords: ["from", "live", "city", "china"] },
+        { ai: "How old are you, and what do you do?", hint: "I'm ... years old. I'm a student.", keywords: ["years old", "student", "school", "work"] },
+        { ai: "What do you usually do after school or work?", hint: "After school, I usually ...", keywords: ["after", "usually", "play", "study", "watch", "read"] },
+        { ai: "That sounds good. What are you learning English for?", hint: "I'm learning English because ...", keywords: ["because", "ielts", "travel", "study", "future"] },
+      ],
+    },
+    school: {
+      title: "校园生活",
+      en: "School life",
+      level: "A1",
+      goal: "练习课程、老师、作业和校园活动。",
+      steps: [
+        { ai: "Let's talk about school. What's your favourite subject?", hint: "My favourite subject is ... because ...", keywords: ["favourite", "favorite", "subject", "english", "math", "science"] },
+        { ai: "Why do you like it?", hint: "I like it because it is ...", keywords: ["because", "interesting", "useful", "easy", "fun"] },
+        { ai: "Do you have a lot of homework every day?", hint: "Yes, I do. / No, I don't. I have ...", keywords: ["homework", "yes", "no", "a lot", "little"] },
+        { ai: "What do you do at lunchtime?", hint: "At lunchtime, I ...", keywords: ["lunch", "eat", "talk", "friends", "play"] },
+        { ai: "If you could change one thing about your school, what would it be?", hint: "I would change ... because ...", keywords: ["would", "change", "because", "more", "less"] },
+      ],
+    },
+    hobbies: {
+      title: "兴趣爱好",
+      en: "Hobbies and free time",
+      level: "A2",
+      goal: "练习兴趣、频率和原因表达。",
+      steps: [
+        { ai: "What do you like doing in your free time?", hint: "In my free time, I like ...", keywords: ["free time", "like", "enjoy", "hobby", "play", "read", "watch"] },
+        { ai: "How often do you do it?", hint: "I do it every day / twice a week / sometimes.", keywords: ["every", "often", "sometimes", "twice", "week", "day"] },
+        { ai: "Who do you usually do it with?", hint: "I usually do it with my ...", keywords: ["with", "friend", "family", "brother", "sister", "alone"] },
+        { ai: "Why do you enjoy it?", hint: "I enjoy it because it makes me feel ...", keywords: ["because", "relax", "happy", "fun", "interesting"] },
+        { ai: "Would you like to try a new hobby? What would you try?", hint: "I would like to try ...", keywords: ["would", "try", "learn", "new", "maybe"] },
+      ],
+    },
+    travel: {
+      title: "旅行计划",
+      en: "Travel plans",
+      level: "A2",
+      goal: "练习地点、交通、时间和计划表达。",
+      steps: [
+        { ai: "Where would you like to travel next?", hint: "I would like to travel to ...", keywords: ["travel", "go", "visit", "want", "would"] },
+        { ai: "How would you get there?", hint: "I would go by plane / train / bus.", keywords: ["plane", "train", "bus", "car", "fly", "by"] },
+        { ai: "Who would you go with?", hint: "I would go with my ...", keywords: ["with", "friend", "family", "parents", "alone"] },
+        { ai: "What would you do there?", hint: "I would ... and ...", keywords: ["visit", "see", "eat", "take", "try", "photo"] },
+        { ai: "What is one problem you might have on the trip?", hint: "One problem might be ...", keywords: ["problem", "maybe", "language", "money", "weather", "lost"] },
+      ],
+    },
+    ielts1: {
+      title: "雅思口语 Part 1",
+      en: "IELTS Speaking Part 1",
+      level: "B1",
+      goal: "练习短回答 + 原因 + 例子的表达结构。",
+      steps: [
+        { ai: "Do you like your hometown? Why?", hint: "Yes, I like it because ... For example, ...", keywords: ["because", "example", "like", "hometown", "city"] },
+        { ai: "Do you often use your phone?", hint: "Yes, I use it every day. I mainly use it to ...", keywords: ["phone", "every day", "use", "mainly", "because"] },
+        { ai: "What kind of music do you listen to?", hint: "I usually listen to ... because ...", keywords: ["music", "listen", "usually", "because", "like"] },
+        { ai: "Do you prefer reading books or watching films?", hint: "I prefer ... because ...", keywords: ["prefer", "because", "book", "film", "reading", "watching"] },
+        { ai: "How do you usually spend your weekends?", hint: "On weekends, I usually ...", keywords: ["weekend", "usually", "spend", "go", "stay", "meet"] },
+      ],
+    },
+    ielts2: {
+      title: "雅思口语 Part 2",
+      en: "IELTS Speaking Part 2",
+      level: "B2",
+      goal: "练习 1–2 分钟长回答和结构展开。",
+      steps: [
+        { ai: "Describe a place you enjoy visiting. You can talk about where it is, what you do there, and why you like it.", hint: "Start with: I'd like to talk about ...", keywords: ["place", "visit", "because", "enjoy", "there"] },
+        { ai: "What makes this place special to you?", hint: "It is special because ...", keywords: ["special", "because", "memory", "feel", "people"] },
+        { ai: "How often do you go there?", hint: "I go there ... / I used to ...", keywords: ["often", "used to", "every", "sometimes", "last"] },
+        { ai: "Would you recommend it to others? Why?", hint: "Yes, I would recommend it because ...", keywords: ["recommend", "because", "others", "yes", "would"] },
+        { ai: "Now give a complete answer in 60 seconds, using all your ideas.", hint: "Use: Where → What → Why → How you feel.", keywords: ["because", "also", "finally", "feel", "enjoy"] },
+      ],
+    },
+  };
+
+  const AI_FREE_PROMPTS = [
+    "What did you do today?",
+    "Tell me about a person you admire.",
+    "What is your favourite food? Why?",
+    "Do you prefer studying alone or with friends?",
+    "What will you do next weekend?",
+    "What is one skill you want to learn?",
+    "Describe a memorable day.",
+    "How do you usually relax?",
+  ];
 
   function defaultProgress() {
     return {
@@ -70,6 +163,17 @@
     challengeLevel: "A1",
     examLevel: "A1",
     session: null,
+    ai: {
+      scenario: "intro",
+      level: "A1",
+      messages: [],
+      stepIndex: 0,
+      thinking: false,
+      listening: false,
+      autoMode: false,
+      recognition: null,
+      settings: { mode: "builtin", baseUrl: "https://api.openai.com/v1", apiKey: "", model: "gpt-4o-mini" },
+    },
   };
 
   const dictionaryShardPromises = new Map();
@@ -104,6 +208,23 @@
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state.progress));
     } catch (e) {
       /* storage full or unavailable */
+    }
+  }
+
+  function loadAiSettings() {
+    try {
+      const raw = localStorage.getItem("ielts_ai_settings");
+      if (raw) Object.assign(state.ai.settings, JSON.parse(raw));
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  function saveAiSettings() {
+    try {
+      localStorage.setItem("ielts_ai_settings", JSON.stringify(state.ai.settings));
+    } catch (e) {
+      /* ignore */
     }
   }
 
@@ -179,7 +300,7 @@
     activeUtterance = null;
   }
 
-  function speakText(text, rate = 0.82) {
+  function speakText(text, rate = 0.82, onEnd = null) {
     const value = String(text || "").trim();
     if (!value) return;
     stopSpeechAudio();
@@ -189,6 +310,7 @@
     }
     const utter = new SpeechSynthesisUtterance(value);
     activeUtterance = utter;
+    if (typeof onEnd === "function") utter.onend = onEnd;
     utter.lang = "en-US";
     utter.rate = rate;
     utter.volume = 1;
@@ -583,6 +705,7 @@
       case "challenges": html = renderChallenges(); break;
       case "exam": html = renderExam(); break;
       case "videos": html = renderVideos(); break;
+      case "ai": html = renderAiChat(); break;
       case "session": html = renderSession(); break;
       case "reading": html = renderReadingTest(state.param); break;
       case "listening": html = renderListeningTest(state.param); break;
@@ -596,6 +719,7 @@
 
     root.innerHTML = html;
     refreshIcons();
+    if (state.view === "ai") window.requestAnimationFrame(scrollAiMessages);
   }
 
   function refreshIcons() {
@@ -1027,22 +1151,267 @@
 
   function renderVideos() {
     const videos = [
-      { bvid: "BV1P44y157Kw", title: "雅思小白如何入门", tag: "入门", desc: "先了解雅思考试结构和基础备考路线。" },
-      { bvid: "BV1i8411X7Et", title: "雅思听力从 0 到精通", tag: "听力", desc: "适合初学者的听力基础训练。" },
-      { bvid: "BV1GV4y1F7UG", title: "阅读听力满分选手经验", tag: "阅读", desc: "题型介绍和基础备考经验。" },
-      { bvid: "BV1gW3szPE8Z", title: "雅思听力基础课程", tag: "听力", desc: "纯干货听力基础课，适合配合分级听力练习。" },
-      { bvid: "BV1ksgkzaEA5", title: "Keith 雅思口语零基础课程", tag: "口语", desc: "中英字幕口语课程，练习发音和表达。" },
-      { bvid: "BV18K411p712", title: "雅思入门和备考方法", tag: "方法", desc: "了解新手最容易走弯路的备考方式。" },
+      { bvid: "BV1A84y1t7cf", title: "雅思阅读全解 13 讲", tag: "阅读系列", episodes: "13 讲", desc: "完整阅读方法论课程，按题型系统讲解定位、同义替换和解题步骤。" },
+      { bvid: "BV1gtV8zXEvT", title: "雅思写作全套课程", tag: "写作系列", episodes: "14 节完结", desc: "从 Task 1 图表到 Task 2 大作文，完整覆盖写作结构和常用表达。" },
+      { bvid: "BV1Gd4y1S7ca", title: "8 节课学完雅思听力", tag: "听力系列", episodes: "8 节", desc: "系统讲解听力题型、预读、关键词和同义替换。" },
+      { bvid: "BV1dg4y1y7EG", title: "雅思口语速成 15 节", tag: "口语系列", episodes: "15 节完结", desc: "完整口语备考流程，覆盖 Part 1、Part 2 和 Part 3。" },
+      { bvid: "BV1XY411J7aG", title: "英语语法精讲合集", tag: "语法系列", episodes: "系统合集", desc: "从零建立语法体系，适合初一水平和基础薄弱的学习者。" },
+      { bvid: "BV1RLNJzrE4e", title: "剑雅听力真题合集", tag: "真题系列", episodes: "64 集", desc: "剑桥雅思听力真题和音频合集，适合作为长期磨耳朵训练。" },
     ];
     return `
       <div class="section-head reveal">
-        <div><h2>精选国内视频</h2><p>来自哔哩哔哩的公开视频，使用官方播放器内嵌；视频版权归原作者所有。</p></div>
+        <div><h2>精选教学系列</h2><p>只保留完整课程和系统合集，不再放经验分享类视频。来自哔哩哔哩官方播放器，版权归原作者所有。</p></div>
       </div>
       <div class="video-grid">
         ${videos.map((v) => `<article class="video-card reveal">
           <div class="video-frame"><iframe src="https://player.bilibili.com/player.html?bvid=${v.bvid}&page=1&high_quality=1&danmaku=0&autoplay=0" loading="lazy" allowfullscreen="true" scrolling="no" frameborder="0"></iframe></div>
-          <div class="video-body"><span class="tag red">${esc(v.tag)}</span><h3>${esc(v.title)}</h3><p>${esc(v.desc)}</p><a href="https://www.bilibili.com/video/${v.bvid}/" target="_blank" rel="noopener">打开 B 站观看</a></div>
+          <div class="video-body"><span class="tag red">${esc(v.tag)}</span><span class="tag gold" style="margin-left:6px">${esc(v.episodes)}</span><h3>${esc(v.title)}</h3><p>${esc(v.desc)}</p><a href="https://www.bilibili.com/video/${v.bvid}/" target="_blank" rel="noopener">打开完整系列</a></div>
         </article>`).join("")}
+      </div>`;
+  }
+
+  function englishFeedback(text) {
+    const value = String(text || "").trim();
+    const notes = [];
+    let corrected = value;
+    const rules = [
+      { re: /\bi am agree\b/gi, to: "I agree", note: "I am agree → I agree" },
+      { re: /\bi very like\b/gi, to: "I really like", note: "I very like → I really like" },
+      { re: /\bhe go\b/gi, to: "he goes", note: "he go → he goes" },
+      { re: /\bshe go\b/gi, to: "she goes", note: "she go → she goes" },
+      { re: /\bmore better\b/gi, to: "better", note: "more better → better" },
+      { re: /\bi am boring\b/gi, to: "I am bored", note: "I am boring → I am bored" },
+      { re: /\bi have (\d+) years? old\b/gi, to: (m, n) => `I am ${n} years old`, note: "I have ... years old → I am ... years old" },
+      { re: /\bmy english is not good\b/gi, to: "my English is not very good", note: "English 要大写" },
+    ];
+    rules.forEach((rule) => {
+      if (rule.re.test(value)) {
+        corrected = corrected.replace(rule.re, rule.to);
+        notes.push(rule.note);
+      }
+    });
+    if (value && !/^[A-Z]/.test(value)) notes.push("句首可以大写");
+    if (value && !/[.!?]$/.test(value)) notes.push("句末可以加句号或问号");
+    const upgrades = [
+      { re: /\bgood\b/gi, to: "great / helpful", note: "good 可以升级为 great / helpful" },
+      { re: /\bbig\b/gi, to: "large / significant", note: "big 可以升级为 large / significant" },
+      { re: /\bvery\b/gi, to: "really / extremely", note: "very 可以换成 really / extremely" },
+    ];
+    upgrades.forEach((u) => {
+      if (u.re.test(value)) notes.push(u.note);
+    });
+    return { corrected, notes: [...new Set(notes)].slice(0, 3) };
+  }
+
+  function builtinAiReply(text) {
+    const value = String(text || "").trim();
+    const lower = value.toLowerCase();
+    const scenario = AI_SCENARIOS[state.ai.scenario];
+    const feedback = englishFeedback(value);
+    if (!scenario) {
+      const prompt = AI_FREE_PROMPTS[Math.floor(Math.random() * AI_FREE_PROMPTS.length)];
+      return { reply: prompt, feedback: feedback.notes.length ? feedback.notes.join("；") : "Keep going. Try to answer in a full sentence." };
+    }
+    const step = scenario.steps[Math.min(state.ai.stepIndex, scenario.steps.length - 1)];
+    if (/^(hint|help|提示|不会|i don't know|i do not know)$/i.test(value)) {
+      return { reply: step.ai, feedback: `可以这样说：${step.hint}` };
+    }
+    const matched = step.keywords.some((keyword) => lower.includes(keyword));
+    if (matched) state.ai.stepIndex = Math.min(state.ai.stepIndex + 1, scenario.steps.length);
+    let reply;
+    if (state.ai.stepIndex >= scenario.steps.length) {
+      reply = "Excellent! You finished this scenario. Let's try a free question: What did you do today?";
+      state.ai.stepIndex = 0;
+    } else {
+      reply = matched
+        ? scenario.steps[state.ai.stepIndex].ai
+        : `That's okay. Try to answer with a full sentence. ${step.ai}`;
+    }
+    const note = feedback.notes.length
+      ? `${feedback.notes.join("；")}。可以改成：${feedback.corrected}`
+      : "表达很清楚。试着再加一个原因或例子。";
+    return { reply, feedback: note };
+  }
+
+  async function callAiApi(history) {
+    const settings = state.ai.settings;
+    if (!settings.apiKey) throw new Error("missing api key");
+    const scenario = AI_SCENARIOS[state.ai.scenario];
+    const system = `You are a patient English conversation tutor for a beginner Chinese learner. Keep your English simple, ask one question at a time, and gently correct important mistakes. Current scenario: ${scenario ? scenario.title : "free conversation"}.`;
+    const res = await fetch(`${settings.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${settings.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: settings.model,
+        temperature: 0.7,
+        messages: [{ role: "system", content: system }].concat(history.slice(-10)),
+      }),
+    });
+    if (!res.ok) throw new Error(`AI API ${res.status}`);
+    const data = await res.json();
+    return (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || "";
+  }
+
+  async function getAiReply(text) {
+    if (state.ai.settings.mode === "api" && state.ai.settings.apiKey) {
+      try {
+        const history = state.ai.messages.map((m) => ({ role: m.role === "ai" ? "assistant" : "user", content: m.text }));
+        const reply = await callAiApi(history);
+        if (reply) return { reply, feedback: englishFeedback(text).notes.join("；") || "Good. Continue the conversation in English." };
+      } catch (e) {
+        toast("AI 模型连接失败，已切换到内置陪练");
+      }
+    }
+    return builtinAiReply(text);
+  }
+
+  function scrollAiMessages() {
+    const box = $("#ai-messages");
+    if (box) box.scrollTop = box.scrollHeight;
+  }
+
+  async function sendAiMessage(text) {
+    const value = String(text || "").trim();
+    if (!value || state.ai.thinking) return;
+    state.ai.messages.push({ role: "user", text: value, feedback: "" });
+    state.ai.thinking = true;
+    render();
+    const result = await getAiReply(value);
+    state.ai.messages.push({ role: "ai", text: result.reply, feedback: result.feedback || "" });
+    state.ai.thinking = false;
+    recordDailyQuestions(1);
+    addXp(5);
+    render();
+    speakAiReply(result.reply);
+  }
+
+  function speakAiReply(text) {
+    speakText(text, 0.82, () => {
+      if (state.ai.autoMode) startAiListening();
+    });
+  }
+
+  function updateAiStatus() {
+    const el = $("#ai-status");
+    if (!el) return;
+    if (state.ai.listening) el.textContent = "正在听你说英语…";
+    else if (state.ai.thinking) el.textContent = "AI 正在回复…";
+    else el.textContent = state.ai.autoMode ? "自动对话已开启，点麦克风开始" : "点麦克风开始实时英语对话";
+  }
+
+  function startAiListening() {
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Recognition) {
+      toast("当前浏览器不支持语音识别，请使用 Edge 或 Chrome，或直接输入英文");
+      return;
+    }
+    if (!state.ai.recognition) {
+      const recognition = new Recognition();
+      recognition.lang = "en-US";
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.onresult = (event) => {
+        let finalText = "";
+        let interimText = "";
+        for (let i = event.resultIndex; i < event.results.length; i += 1) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) finalText += transcript + " ";
+          else interimText += transcript;
+        }
+        const live = $("#ai-live-text");
+        if (live) live.textContent = interimText || finalText;
+        if (finalText.trim()) sendAiMessage(finalText.trim());
+      };
+      recognition.onerror = () => {
+        state.ai.listening = false;
+        updateAiStatus();
+      };
+      recognition.onend = () => {
+        state.ai.listening = false;
+        updateAiStatus();
+        if (state.ai.autoMode && !state.ai.thinking) window.setTimeout(startAiListening, 450);
+      };
+      state.ai.recognition = recognition;
+    }
+    try {
+      state.ai.listening = true;
+      state.ai.recognition.start();
+      updateAiStatus();
+    } catch (e) {
+      state.ai.listening = false;
+      updateAiStatus();
+    }
+  }
+
+  function stopAiListening(manual = false) {
+    if (manual) state.ai.autoMode = false;
+    if (state.ai.recognition) {
+      try { state.ai.recognition.stop(); } catch (e) { /* ignore */ }
+    }
+    state.ai.listening = false;
+    updateAiStatus();
+  }
+
+  function startAiScenario(id) {
+    stopAiListening(true);
+    state.ai.scenario = id;
+    state.ai.stepIndex = 0;
+    const scenario = AI_SCENARIOS[id];
+    const first = scenario ? scenario.steps[0].ai : AI_FREE_PROMPTS[0];
+    state.ai.messages = [{ role: "ai", text: first, feedback: "" }];
+    render();
+    speakAiReply(first);
+  }
+
+  function renderAiChat() {
+    const scenario = AI_SCENARIOS[state.ai.scenario];
+    if (!state.ai.messages.length) {
+      state.ai.messages = [{ role: "ai", text: scenario ? scenario.steps[0].ai : AI_FREE_PROMPTS[0], feedback: "" }];
+    }
+    const messages = state.ai.messages.map((m, i) => `
+      <div class="ai-message ${m.role}">
+        <div class="ai-avatar">${m.role === "ai" ? "AI" : "你"}</div>
+        <div class="ai-bubble">
+          <div>${wordify(m.text)}</div>
+          ${m.feedback ? `<div class="ai-feedback">${esc(m.feedback)}</div>` : ""}
+          ${m.role === "ai" ? `<button class="ai-speak" data-action="ai-speak" data-index="${i}" title="朗读"><i data-lucide="volume-2"></i></button>` : ""}
+        </div>
+      </div>`).join("");
+    const scenarios = Object.entries(AI_SCENARIOS).map(([id, s]) => `<button class="ai-scenario ${state.ai.scenario === id ? "is-active" : ""}" data-action="set-ai-scenario" data-id="${id}"><strong>${esc(s.title)}</strong><span>${esc(s.level)} · ${esc(s.en)}</span></button>`).join("")
+      + `<button class="ai-scenario ${state.ai.scenario === "free" ? "is-active" : ""}" data-action="set-ai-scenario" data-id="free"><strong>自由对话</strong><span>随机话题 · Free talk</span></button>`;
+    const s = state.ai.settings;
+    return `
+      <div class="section-head reveal"><div><h2>AI 英语对话</h2><p>用麦克风实时说英语，AI 会用语音回复并给出简单纠错。也可以直接打字。</p></div><span class="tag teal">浏览器实时语音</span></div>
+      <div class="ai-scenario-grid reveal">${scenarios}</div>
+      <div class="ai-layout">
+        <section class="panel ai-chat-card reveal">
+          <div class="ai-chat-head"><div><strong>${esc(scenario ? scenario.title : "自由对话")}</strong><span>${esc(scenario ? scenario.goal : "练习自由表达，AI 会继续追问。")}</span></div><span class="tag ${state.ai.listening ? "red" : "teal"}">${state.ai.listening ? "Listening" : "Ready"}</span></div>
+          <div class="ai-messages" id="ai-messages">${messages}${state.ai.thinking ? `<div class="ai-message ai"><div class="ai-avatar">AI</div><div class="ai-bubble"><span class="typing-dots">正在输入</span></div></div>` : ""}</div>
+          <div class="ai-live" id="ai-live-text"></div>
+          <div class="ai-input-row">
+            <button class="ai-mic ${state.ai.listening ? "is-listening" : ""}" id="ai-mic" data-action="ai-toggle-mic" title="开始/停止语音输入"><i data-lucide="mic"></i></button>
+            <input id="ai-input" type="text" placeholder="Type in English, or click the microphone..." autocomplete="off" />
+            <button class="btn primary" data-action="ai-send"><i data-lucide="send"></i></button>
+          </div>
+          <div class="ai-actions">
+            <button class="btn ghost" data-action="ai-hint"><i data-lucide="lightbulb"></i>提示我会怎么说</button>
+            <button class="btn ${state.ai.autoMode ? "teal" : "ghost"}" data-action="ai-toggle-auto"><i data-lucide="repeat"></i>自动对话</button>
+            <button class="btn ghost" data-action="ai-reset"><i data-lucide="rotate-ccw"></i>重新开始</button>
+          </div>
+          <div class="ai-status" id="ai-status">${state.ai.listening ? "正在听你说英语…" : state.ai.autoMode ? "自动对话已开启，点麦克风开始" : "点麦克风开始实时英语对话"}</div>
+        </section>
+        <aside class="panel ai-settings-card reveal">
+          <h3>AI 模型设置（可选）</h3>
+          <label>模式<select id="ai-mode"><option value="builtin" ${s.mode === "builtin" ? "selected" : ""}>内置陪练（无需 Key）</option><option value="api" ${s.mode === "api" ? "selected" : ""}>自定义 OpenAI 兼容模型</option></select></label>
+          <label>API Base URL<input id="ai-base-url" value="${esc(s.baseUrl)}" placeholder="https://api.openai.com/v1" /></label>
+          <label>模型<input id="ai-model" value="${esc(s.model)}" placeholder="gpt-4o-mini" /></label>
+          <label>API Key<input id="ai-key" type="password" value="${esc(s.apiKey)}" placeholder="只保存在本机浏览器" /></label>
+          <button class="btn teal" data-action="save-ai-settings"><i data-lucide="save"></i>保存 AI 设置</button>
+          <p>不填 Key 时使用内置陪练，仍然支持实时语音输入和语音回复。自定义模型需要接口允许浏览器跨域访问。</p>
+        </aside>
       </div>`;
   }
 
@@ -1459,6 +1828,56 @@
       checkVocabUpdate();
       return;
     }
+    if (action === "set-ai-scenario") {
+      startAiScenario(target.dataset.id);
+      return;
+    }
+    if (action === "ai-send") {
+      const input = $("#ai-input");
+      if (input) {
+        const value = input.value;
+        input.value = "";
+        sendAiMessage(value);
+      }
+      return;
+    }
+    if (action === "ai-toggle-mic") {
+      if (state.ai.listening) stopAiListening(true);
+      else startAiListening();
+      return;
+    }
+    if (action === "ai-toggle-auto") {
+      state.ai.autoMode = !state.ai.autoMode;
+      toast(state.ai.autoMode ? "自动对话已开启，说完 AI 会继续听" : "自动对话已关闭");
+      render();
+      if (state.ai.autoMode && !state.ai.listening) startAiListening();
+      return;
+    }
+    if (action === "ai-reset") {
+      startAiScenario(state.ai.scenario);
+      return;
+    }
+    if (action === "ai-hint") {
+      const scenario = AI_SCENARIOS[state.ai.scenario];
+      const step = scenario ? scenario.steps[Math.min(state.ai.stepIndex, scenario.steps.length - 1)] : null;
+      state.ai.messages.push({ role: "ai", text: step ? step.ai : AI_FREE_PROMPTS[0], feedback: step ? `提示：${step.hint}` : "试着用完整句子回答。 " });
+      render();
+      return;
+    }
+    if (action === "ai-speak") {
+      const message = state.ai.messages[Number(target.dataset.index)];
+      if (message) speakText(message.text, 0.82);
+      return;
+    }
+    if (action === "save-ai-settings") {
+      state.ai.settings.mode = $("#ai-mode") ? $("#ai-mode").value : "builtin";
+      state.ai.settings.baseUrl = $("#ai-base-url") ? $("#ai-base-url").value.trim() : state.ai.settings.baseUrl;
+      state.ai.settings.model = $("#ai-model") ? $("#ai-model").value.trim() : state.ai.settings.model;
+      state.ai.settings.apiKey = $("#ai-key") ? $("#ai-key").value.trim() : "";
+      saveAiSettings();
+      toast("AI 设置已保存在本机");
+      return;
+    }
     if (action === "start-challenge") {
       startSession("challenge", target.dataset.type, target.dataset.level || state.challengeLevel);
       return;
@@ -1805,6 +2224,15 @@
       if (e.target.matches("[data-writing-id]")) updateWordCount();
       if (e.target.matches("[data-qpath]")) updateLiveScore();
     });
+    $("#view-root").addEventListener("keydown", (e) => {
+      if (e.target.id === "ai-input" && e.key === "Enter") {
+        e.preventDefault();
+        const input = $("#ai-input");
+        const value = input.value;
+        input.value = "";
+        sendAiMessage(value);
+      }
+    });
     $("#lookup-toggle").addEventListener("click", () => {
       state.lookupEnabled = !state.lookupEnabled;
       $("#lookup-toggle").classList.toggle("is-active", state.lookupEnabled);
@@ -1828,6 +2256,7 @@
     $$(".nav-item").forEach((btn) => {
       btn.addEventListener("click", () => {
         if (state.view === "session" && btn.dataset.view !== "session") stopSessionTimer();
+        if (state.view === "ai" && btn.dataset.view !== "ai") stopAiListening(true);
         setView(btn.dataset.view);
       });
     });
@@ -1852,6 +2281,7 @@
   }
 
   function init() {
+    loadAiSettings();
     bindEvents();
     renderTarget();
     render();
