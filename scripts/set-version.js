@@ -12,7 +12,16 @@ const site = fs.existsSync(path.join(root, "site", "index.html")) ? path.join(ro
 const releasedAt = new Date().toISOString();
 const base = "https://nma82439668hhf.github.io/ielts-passport/";
 
+function updatePackageVersion(packagePath) {
+  if (!fs.existsSync(packagePath)) return;
+  const pkg = JSON.parse(fs.readFileSync(packagePath, "utf8"));
+  pkg.version = version;
+  fs.writeFileSync(packagePath, `${JSON.stringify(pkg, null, 2)}\n`, "utf8");
+}
+
 fs.writeFileSync(path.join(site, "data", "version.js"), `window.IELTS_BANK = window.IELTS_BANK || {};\nwindow.IELTS_BANK.version = ${JSON.stringify({ webVersion: version, releasedAt })};\n`, "utf8");
 fs.writeFileSync(path.join(site, "data", "remote-version.js"), `window.IELTS_REMOTE_VERSION = ${JSON.stringify({ webVersion: version, releasedAt, siteUrl: base })};\n`, "utf8");
 fs.writeFileSync(path.join(site, "version.json"), `${JSON.stringify({ webVersion: version, releasedAt, siteUrl: base, mode: "hybrid" }, null, 2)}\n`, "utf8");
+updatePackageVersion(path.join(root, "apps", "desktop", "package.json"));
+updatePackageVersion(path.join(root, "apps", "mobile", "package.json"));
 console.log(`Version set to ${version}`);

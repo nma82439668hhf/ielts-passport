@@ -53,16 +53,18 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - id: get_version
+        run: echo "version=$(node -p "require('./apps/desktop/package.json').version")" >> $GITHUB_OUTPUT
       - uses: actions/download-artifact@v4
         with:
           name: android-debug-apk
           path: release
       - name: Rename Android APK
-        run: mv release/app-debug.apk release/IELTS-Passport-Android-Debug-1.0.1.apk
+        run: mv release/app-debug.apk "release/IELTS-Passport-Android-Debug-${{ steps.get_version.outputs.version }}.apk"
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.1
-          name: IELTS Passport v1.0.1
+          tag_name: v${{ steps.get_version.outputs.version }}
+          name: IELTS Passport v${{ steps.get_version.outputs.version }}
           body: Android APK with hybrid cloud update, WeChat/QQ login support, Vega authorship notice and support QR.
           files: release/*.apk
           make_latest: true
