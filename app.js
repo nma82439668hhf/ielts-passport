@@ -3521,6 +3521,7 @@
     });
     $("#install-app").addEventListener("click", installApp);
     $("#open-support").addEventListener("click", openSupport);
+    $("#mobile-support-reminder").addEventListener("click", openSupport);
     $("#support-close").addEventListener("click", closeSupport);
     $("#support-modal").addEventListener("click", (e) => {
       if (e.target.id === "support-modal") closeSupport();
