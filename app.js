@@ -2096,8 +2096,8 @@
           <aside class="panel account-cloud reveal">
             <h3>云端同步设置</h3>
             <p>本地账户只保存在这台设备。要跨手机和电脑同步，请填写你的 Supabase 项目配置，然后使用云端邮箱账户登录。</p>
-            <label>Supabase URL<input id="supabase-url" value="${esc(cloud.url)}" placeholder="https://xxxx.supabase.co" /></label>
-            <label>Supabase Anon Key<input id="supabase-anon-key" type="password" value="${esc(cloud.anonKey)}" placeholder="eyJ..." /></label>
+            <label>Supabase URL<input id="supabase-url-settings" value="${esc(cloud.url)}" placeholder="https://xxxx.supabase.co" /></label>
+            <label>Supabase Anon Key<input id="supabase-anon-key-settings" type="password" value="${esc(cloud.anonKey)}" placeholder="eyJ..." /></label>
             <button class="btn ghost" data-action="save-cloud-settings"><i data-lucide="save"></i>保存云端配置</button>
             <p class="account-note">云端登录使用 Supabase 官方 Auth 接口，密码不会保存在本网站。当前账户类型：${user.mode === "supabase" ? "Supabase 云端" : "本机浏览器"}。</p>
           </aside>
@@ -2117,6 +2117,7 @@
           ${isRegister && state.config.allowRegistration ? `<div class="seg storage-tabs"><button data-action="set-register-storage" data-storage="cloud" class="${cloudRegister ? "is-active" : ""}">云端存储（推荐）</button><button data-action="set-register-storage" data-storage="local" class="${!cloudRegister ? "is-active" : ""}">仅本机</button></div>` : ""}
           <form class="account-form" id="account-form">
             ${isRegister ? `<label>昵称<input id="account-name" autocomplete="nickname" placeholder="例如：Wei" /></label>` : ""}
+            ${isRegister && cloudRegister ? `<label>Supabase URL<input id="supabase-url" value="${esc(cloud.url)}" placeholder="https://xxxx.supabase.co" /></label><label>Supabase Anon Key<input id="supabase-anon-key" type="password" value="${esc(cloud.anonKey)}" placeholder="eyJ..." /></label>` : ""}
             <label>邮箱<input id="account-email" type="email" autocomplete="email" placeholder="you@example.com" required /></label>
             <label>密码<input id="account-password" type="password" autocomplete="${isRegister ? "new-password" : "current-password"}" placeholder="至少 6 位" required minlength="6" /></label>
             <button class="btn primary" type="button" data-action="account-submit"><i data-lucide="${isRegister ? "user-plus" : "log-in"}"></i>${isRegister ? (cloudRegister ? "注册云端账户" : "注册本机账户") : "登录本机账户"}</button>
@@ -2130,8 +2131,8 @@
         <aside class="panel account-cloud reveal">
           <h3>云端邮箱账户（可选）</h3>
           <p>填写你的 Supabase 项目地址和 Anon Key。注册后 Supabase 可能要求邮箱确认，确认完成后即可跨设备同步。</p>
-          <label>Supabase URL<input id="supabase-url" value="${esc(cloud.url)}" placeholder="https://xxxx.supabase.co" /></label>
-          <label>Supabase Anon Key<input id="supabase-anon-key" type="password" value="${esc(cloud.anonKey)}" placeholder="eyJ..." /></label>
+          <label>Supabase URL<input id="supabase-url-settings" value="${esc(cloud.url)}" placeholder="https://xxxx.supabase.co" /></label>
+          <label>Supabase Anon Key<input id="supabase-anon-key-settings" type="password" value="${esc(cloud.anonKey)}" placeholder="eyJ..." /></label>
           <button class="btn ghost" data-action="save-cloud-settings"><i data-lucide="save"></i>保存云端配置</button>
           ${state.config.allowRegistration ? `<button class="btn teal" data-action="cloud-signup"><i data-lucide="cloud"></i>云端邮箱注册</button>` : ""}
           <button class="btn ghost" data-action="cloud-signin"><i data-lucide="log-in"></i>云端邮箱登录</button>
@@ -2799,8 +2800,10 @@
       return;
     }
     if (action === "save-cloud-settings") {
-      state.account.cloud.url = ($("#supabase-url") ? $("#supabase-url").value : "").trim();
-      state.account.cloud.anonKey = ($("#supabase-anon-key") ? $("#supabase-anon-key").value : "").trim();
+      const urlInput = $("#supabase-url") || $("#supabase-url-settings");
+      const keyInput = $("#supabase-anon-key") || $("#supabase-anon-key-settings");
+      state.account.cloud.url = (urlInput ? urlInput.value : "").trim();
+      state.account.cloud.anonKey = (keyInput ? keyInput.value : "").trim();
       saveCloudSettings();
       toast("云端配置已保存在本机");
       return;
@@ -2821,8 +2824,10 @@
         toast("请填写邮箱和至少 6 位密码");
         return;
       }
-      state.account.cloud.url = ($("#supabase-url") ? $("#supabase-url").value : state.account.cloud.url).trim();
-      state.account.cloud.anonKey = ($("#supabase-anon-key") ? $("#supabase-anon-key").value : state.account.cloud.anonKey).trim();
+      const urlInput = $("#supabase-url") || $("#supabase-url-settings");
+      const keyInput = $("#supabase-anon-key") || $("#supabase-anon-key-settings");
+      state.account.cloud.url = (urlInput ? urlInput.value : state.account.cloud.url).trim();
+      state.account.cloud.anonKey = (keyInput ? keyInput.value : state.account.cloud.anonKey).trim();
       saveCloudSettings();
       try {
         if (action === "cloud-signup") await supabaseSignUp(email, password);
@@ -3253,7 +3258,7 @@
           slot.innerHTML = buildExplanation(meta, ok);
         }
       }
-      if (selected) {
+      if (selected && state.currentTest.skill !== "review") {
         const wrongId = `${statSkill}:${state.currentTest.id}:${qpath}`;
         const wrongList = state.progress.wrongAnswers || [];
         if (!ok) {
@@ -3262,12 +3267,12 @@
             skill: statSkill,
             testId: state.currentTest.id,
             qpath,
-            question: meta.question || "",
+            question: (meta.question || "").slice(0, 800),
             answer: meta.answer || "",
             accepted: meta.accepted || [],
             options: meta.options || [],
             type: meta.type,
-            context: meta.context || "",
+            context: (meta.context || "").slice(0, 5000),
             explanation: meta.explain || `正确答案是：${meta.answer || ""}`,
             selected,
             timestamp: Date.now(),
