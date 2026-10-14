@@ -3351,6 +3351,47 @@ body {
   }
 }
 
+.feedback-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 7px 11px;
+  color: var(--ink-soft);
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(27, 33, 30, 0.09);
+  border-radius: 999px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.feedback-btn svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
+.feedback-btn:hover {
+  color: var(--teal-deep);
+  background: #e5eee9;
+  border-color: rgba(57, 115, 95, 0.22);
+}
+
+@media (max-width: 760px) {
+  .feedback-btn {
+    width: 36px;
+    padding: 0;
+  }
+
+  .feedback-btn span {
+    display: none;
+  }
+}
+
 .account-warning {
   color: var(--brand-deep);
   background: linear-gradient(135deg, rgba(79, 138, 118, 0.28), rgba(75, 109, 121, 0.12));
