@@ -173,6 +173,18 @@
     </div>
   </div>
 
+  <div class="announcement-modal" id="announcement-modal" hidden>
+    <div class="announcement-card" role="dialog" aria-modal="true" aria-labelledby="announcement-title">
+      <button class="announcement-close" id="announcement-close" aria-label="关闭更新公告">×</button>
+      <span class="eyebrow">WHAT'S NEW</span>
+      <h2 id="announcement-title">更新完成</h2>
+      <ul class="announcement-list" id="announcement-list"></ul>
+      <div class="announcement-actions">
+        <button class="btn primary" id="announcement-confirm">知道了</button>
+      </div>
+    </div>
+  </div>
+
   <script src="vendor/lucide.min.js"></script>
   <script src="data/learn.js"></script>
   <script src="data/vocab-levels.js"></script>
@@ -188,6 +200,7 @@
   <script src="data/sources.js"></script>
   <script src="data/version.js"></script>
   <script src="data/cloud-config.js"></script>
+  <script src="data/changelog.js"></script>
   <script src="hybrid-update.js"></script>
   <script src="app.js"></script>
 </body>

@@ -3,6 +3,7 @@
 
   const BANK = window.IELTS_BANK || {};
   const STORAGE_KEY = "ielts_passport_v1";
+  const ANNOUNCEMENT_STORAGE_KEY = "ielts_announcement_seen";
   let progressStorageKey = STORAGE_KEY;
   const ADMIN_EMAILS = new Set(["nma82438@gmail.com", "nma82438.gmail"]);
   const PUBLISHED_CLOUD = window.IELTS_CLOUD_CONFIG || {};
@@ -2330,6 +2331,41 @@
     if (modal) modal.hidden = true;
   }
 
+  function currentWebVersion() {
+    return (BANK.version && BANK.version.webVersion) || "0.0.0";
+  }
+
+  function showUpdateAnnouncement() {
+    const modal = $("#announcement-modal");
+    if (!modal) return;
+    const version = currentWebVersion();
+    const params = new URLSearchParams(location.search);
+    const isAppCloudUpdate = params.get("cloud") === "1";
+    const appNoticeKey = `${ANNOUNCEMENT_STORAGE_KEY}_app_${version}`;
+    if (!isAppCloudUpdate && localStorage.getItem(ANNOUNCEMENT_STORAGE_KEY) === version) return;
+    if (isAppCloudUpdate && localStorage.getItem(appNoticeKey) === version) return;
+    const entries = Array.isArray(window.IELTS_CHANGELOG) ? window.IELTS_CHANGELOG : [];
+    const entry = entries.find((item) => item.version === version) || entries[0];
+    if (!entry) return;
+    $("#announcement-title").textContent = `已更新到 v${entry.version}`;
+    $("#announcement-list").innerHTML = (entry.items || [])
+      .map((item) => `<li>${esc(item)}</li>`)
+      .join("");
+    modal.dataset.appCloudUpdate = isAppCloudUpdate ? "1" : "";
+    modal.hidden = false;
+  }
+
+  function closeUpdateAnnouncement() {
+    const modal = $("#announcement-modal");
+    if (!modal) return;
+    const version = currentWebVersion();
+    localStorage.setItem(ANNOUNCEMENT_STORAGE_KEY, version);
+    if (modal.dataset.appCloudUpdate === "1") {
+      localStorage.setItem(`${ANNOUNCEMENT_STORAGE_KEY}_app_${version}`, version);
+    }
+    modal.hidden = true;
+  }
+
   function renderReadingTest(id) {
     const test = findTest("reading", id);
     if (!test) return `<div class="panel empty-state"><p>未找到该套题</p></div>`;
@@ -3523,6 +3559,11 @@
     $("#open-support").addEventListener("click", openSupport);
     $("#mobile-support-reminder").addEventListener("click", openSupport);
     $("#support-close").addEventListener("click", closeSupport);
+    $("#announcement-close").addEventListener("click", closeUpdateAnnouncement);
+    $("#announcement-confirm").addEventListener("click", closeUpdateAnnouncement);
+    $("#announcement-modal").addEventListener("click", (e) => {
+      if (e.target.id === "announcement-modal") closeUpdateAnnouncement();
+    });
     $("#support-modal").addEventListener("click", (e) => {
       if (e.target.id === "support-modal") closeSupport();
     });
@@ -3606,6 +3647,7 @@
     }
     renderTarget();
     render();
+    showUpdateAnnouncement();
   }
 
   init();
