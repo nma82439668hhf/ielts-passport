@@ -2,18 +2,22 @@ name: Build Android APK
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - "v*"
+    inputs:
+      source_ref:
+        description: Exact source commit to build
+        required: true
+        default: main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref }}
       - uses: pnpm/action-setup@v4
         with:
           version: 11
@@ -29,45 +33,30 @@ jobs:
           packages: "platform-tools"
           accept-android-sdk-licenses: true
       - name: Install Android SDK packages
+        run: sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+      - name: Prepare native Android project
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platform-tools" "platforms;android-34" "platforms;android-35" "build-tools;34.0.0" "build-tools;35.0.0"
-      - name: Install dependencies and generate Android project
-        run: |
-          pnpm --dir apps/mobile install --no-frozen-lockfile
+          pnpm --dir apps/mobile install --frozen-lockfile
           pnpm --dir apps/mobile prepare:web
           cd apps/mobile
           pnpm exec cap add android
           cd ../..
           node scripts/configure-native-app.mjs android
-      - name: Build debug APK
+      - name: Build debug signed APK
         run: |
           cd apps/mobile/android
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
+      - name: Verify signature and embedded website version
+        run: |
+          APK=apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          VERSION=$(node -p "require('./apps/mobile/package.json').version")
+          test "$(unzip -p "$APK" assets/public/version.json | python3 -c 'import json,sys; print(json.load(sys.stdin)["webVersion"])')" = "$VERSION"
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs "$APK"
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$APK" | head -n 5
+          sha256sum "$APK"
       - uses: actions/upload-artifact@v4
         with:
           name: android-debug-apk
           path: apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - id: get_version
-        run: echo "version=$(node -p "require('./apps/desktop/package.json').version")" >> $GITHUB_OUTPUT
-      - uses: actions/download-artifact@v4
-        with:
-          name: android-debug-apk
-          path: release
-      - name: Rename Android APK
-        run: mv release/app-debug.apk "release/IELTS-Passport-Android-Debug-${{ steps.get_version.outputs.version }}.apk"
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ steps.get_version.outputs.version }}
-          name: IELTS Passport v${{ steps.get_version.outputs.version }}
-          body: Android APK with hybrid cloud update, WeChat/QQ login support, Vega authorship notice and support QR.
-          files: release/*.apk
-          make_latest: true

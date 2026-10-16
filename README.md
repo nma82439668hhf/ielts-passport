@@ -2,6 +2,15 @@
 
 作者：Vega。未经授权禁止外传。
 
+## 当前发布范围（2026-10-16）
+
+用户明确要求发布 Windows 与 Android 的 v1.2.1 安装包。电脑使用常驻侧栏与展开布局，手机保留底部导航，
+支持白天、黑夜与跟随系统。原有学习记录、作者和账户语义保留。
+`deployment-policy.json` 仅恢复 Windows/Android，macOS、Linux、iOS 继续暂停。
+构建工作流仅手动触发并接受明确的源码提交；安装包验收后统一发布 GitHub Release。
+Windows 安装包未做代码签名，Android 沿用调试签名 APK，不代表应用商店版本。
+全局 App 云跳转标记保持原值，避免给暂停的平台发送新更新通知；其他平台下载入口固定到已有 v1.2.0。
+
 一个面向英语新手的雅思学习与练习网站：学习地图、A1–C1 分级词汇、听力 / 阅读 / 写作 / 口语题库，以及本机进度追踪。
 
 ## 本地运行
@@ -101,7 +110,7 @@ window.IELTS_CLOUD_CONFIG = {
 - Electron 桌面版和 Capacitor Android/iOS 内置离线网页包；启动后检查云端 `data/remote-version.js`。
 - 如果云端版本更高，App 自动切换到 GitHub Pages 最新版；离线或网络失败时继续使用内置版本。
 - App 账户页提供“检查 App 云端更新”按钮。
-- 发版时运行 `node tools/set-version.js 1.0.2`，然后触发桌面、Android、iOS 构建工作流。CI 会自动创建对应版本 Release 并上传安装包。
+- 历史多端发版命令为 `node scripts/set-version.js 1.0.2`。当前暂停期间仅提升网页版本，不触发桌面、Android、iOS 工作流；现有 Release 安装包保留。
 
 AI 对话页默认使用内置陪练，不需要 API Key。需要更强对话能力时，可以在页面右侧填写 OpenAI 兼容 API 的 Base URL、模型名和 Key；Key 只保存在当前浏览器 localStorage。
 

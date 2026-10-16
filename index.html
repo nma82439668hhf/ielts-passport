@@ -3,23 +3,29 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>IELTS Passport · 从零到雅思上岸</title>
+  <title>IELTS Passport · 学习工作台</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
   <link rel="manifest" href="manifest.webmanifest" />
-  <meta name="theme-color" content="#f5f4f0" />
+  <meta name="theme-color" content="#f2f2f7" />
+  <script>
+    // 在首次绘制前设置主题；完整交互脚本在文档末尾加载。
+    try { const saved=JSON.parse(localStorage.getItem('ielts_user_settings')||'{}'); const choice=saved&&['light','dark'].includes(saved.theme)?saved.theme:(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'); document.documentElement.dataset.theme=choice; document.documentElement.dataset.themePreference=saved&&["light","dark"].includes(saved.theme)?saved.theme:"auto"; document.documentElement.style.colorScheme=choice; document.querySelector('meta[name="theme-color"]').content=choice==='dark'?'#000000':'#f2f2f7'; } catch (_) { const choice=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=choice;document.documentElement.dataset.themePreference="auto";document.documentElement.style.colorScheme=choice;document.querySelector('meta[name="theme-color"]').content=choice==='dark'?'#000000':'#f2f2f7'; }
+  </script>
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="IELTS Passport" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <meta name="description" content="面向英语新手的雅思学习与练习网站：学习地图、高频词汇、听力阅读写作口语题库与进度追踪。" />
   <meta name="author" content="Vega" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,900&family=Sora:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="design.css" />
+  <link rel="stylesheet" href="motion.css" />
+  <link rel="stylesheet" href="study-panel.css" />
+  <link rel="stylesheet" href="theme.css" />
+  <link rel="stylesheet" href="ios.css" />
 </head>
 <body>
-  <div class="grain" aria-hidden="true"></div>
+  <a class="skip-link" href="#view-root">跳到学习内容</a>
 
   <aside class="sidebar" id="sidebar">
     <div class="brand">
@@ -28,48 +34,11 @@
       </div>
       <div class="brand-text">
         <strong>IELTS Passport</strong>
-        <span>从零到雅思上岸</span>
+        <span>英语学习工作台</span>
       </div>
     </div>
 
-    <nav class="nav" aria-label="主导航">
-      <button class="nav-item is-active" data-view="home">
-        <i data-lucide="layout-dashboard"></i><span>今日学习</span>
-      </button>
-      <button class="nav-item" data-view="path">
-        <i data-lucide="map"></i><span>学习地图</span>
-      </button>
-      <button class="nav-item" data-view="practice">
-        <i data-lucide="book-open-check"></i><span>题库练习</span>
-      </button>
-      <button class="nav-item" data-view="library">
-        <i data-lucide="library"></i><span>阅读与写作</span>
-      </button>
-      <button class="nav-item" data-view="challenges">
-        <i data-lucide="trophy"></i><span>题型挑战</span>
-      </button>
-      <button class="nav-item" data-view="exam">
-        <i data-lucide="clipboard-check"></i><span>模拟考试</span>
-      </button>
-      <button class="nav-item" data-view="videos">
-        <i data-lucide="play-circle"></i><span>教学系列</span>
-      </button>
-      <button class="nav-item" data-view="vocab">
-        <i data-lucide="notebook-tabs"></i><span>高频词汇</span>
-      </button>
-      <button class="nav-item" data-view="speaking">
-        <i data-lucide="mic-2"></i><span>口语题库</span>
-      </button>
-      <button class="nav-item" data-view="ai">
-        <i data-lucide="bot"></i><span>AI 英语对话</span>
-      </button>
-      <button class="nav-item" data-view="account">
-        <i data-lucide="user-round"></i><span>账户与同步</span>
-      </button>
-      <button class="nav-item" data-view="settings">
-        <i data-lucide="settings"></i><span>设置</span>
-      </button>
-    </nav>
+    <button id="shell-close-menu" class="shell-close-menu" aria-label="关闭导航"><i data-lucide="x"></i></button><nav class="nav" aria-label="主导航"><div class="nav-label">学习</div><button class="nav-item is-active" data-view="home"><i data-lucide="house"></i><span>学习概览</span></button><button class="nav-item " data-view="path"><i data-lucide="map"></i><span>学习地图</span></button><button class="nav-item " data-view="vocab"><i data-lucide="notebook-tabs"></i><span>分级词汇</span></button><button class="nav-item " data-view="practice"><i data-lucide="book-open-check"></i><span>题库练习</span></button><button class="nav-item " data-view="library"><i data-lucide="library"></i><span>阅读与写作</span></button><button class="nav-item " data-view="speaking"><i data-lucide="mic-2"></i><span>口语题库</span></button><button class="nav-item " data-view="ai"><i data-lucide="messages-square"></i><span>英语陪练</span></button><div class="nav-label">进阶</div><button class="nav-item " data-view="challenges"><i data-lucide="trophy"></i><span>题型挑战</span></button><button class="nav-item " data-view="exam"><i data-lucide="clipboard-check"></i><span>模拟考试</span></button><button class="nav-item " data-view="videos"><i data-lucide="play-circle"></i><span>教学系列</span></button><div class="nav-label">个人</div><button class="nav-item " data-view="account"><i data-lucide="user-round"></i><span>账户与同步</span></button><button class="nav-item " data-view="settings"><i data-lucide="settings"></i><span>设置</span></button></nav>
 
     <div class="sidebar-foot">
       <div class="target-card">
@@ -81,11 +50,11 @@
         </div>
       </div>
       <button class="install-btn" id="install-app">
-        <i data-lucide="download"></i><span>安装 App 版本</span>
+        <i data-lucide="download"></i><span>安装应用</span>
       </button>
-      <button class="source-link" data-view="about">
+      <button class="source-link" data-view="about" aria-label="题库来源与许可" title="题库来源与许可">
         <i data-lucide="info"></i><span>题库来源与许可</span>
-      </button>
+      </button><div class="shell-profile"><span aria-hidden="true">学</span><div><strong>学习者</strong><small>本机学习档案</small></div></div>
     </div>
   </aside>
 
@@ -94,10 +63,10 @@
   <main class="main">
     <header class="topbar">
       <div class="topbar-title">
-        <span class="eyebrow">IELTS ACADEMIC · BEGINNER PATH</span>
-        <h1 id="view-title">今日学习</h1>
+        <button id="shell-menu" class="shell-menu" aria-label="打开导航" aria-controls="sidebar" aria-expanded="false"><i data-lucide="menu"></i></button>
+        <h1 id="view-title">学习概览</h1>
       </div>
-      <div class="topbar-actions">
+      <div class="topbar-actions"><button id="theme-toggle" class="theme-toggle" type="button" aria-label="切换白天与黑夜模式"><span class="theme-toggle-icons" aria-hidden="true"><span class="theme-icon-sun"><i data-lucide="sun"></i></span><span class="theme-icon-moon"><i data-lucide="moon"></i></span></span><span class="theme-toggle-label">白天模式</span></button><button id="open-study-panel" class="study-panel-trigger" aria-label="打开专注计时"><i data-lucide="timer"></i><span>专注计时</span></button><span id="shell-date" class="shell-top-meta"></span><button class="desktop-support" id="mobile-support-reminder" type="button" aria-label="支持作者"><i data-lucide="heart"></i><span>支持作者</span></button>
         <button class="lookup-toggle" id="tts-compat" title="Via 或无法系统朗读时使用在线 MP3 朗读">
           <i data-lucide="volume-2"></i><span>兼容朗读</span>
         </button>
@@ -110,23 +79,19 @@
         <div class="streak-pill" title="连续学习天数">
           <i data-lucide="flame"></i><span id="streak-value">0</span> 天
         </div>
-        <button class="reset-btn" id="reset-progress" title="清空本机学习记录">
+        <button class="reset-btn" id="reset-progress" aria-label="清空本机学习记录" title="清空本机学习记录">
           <i data-lucide="rotate-ccw"></i>
         </button>
       </div>
     </header>
 
-    <button class="mobile-support-reminder" id="mobile-support-reminder" type="button">
-      <i data-lucide="heart"></i>
-      <span>如果你觉得可以 可以支持一下我的作品</span>
-      <i data-lucide="chevron-right"></i>
-    </button>
 
-    <section class="view" id="view-root" aria-live="polite"></section>
+
+    <section class="view" id="view-root" tabindex="-1" aria-live="polite"></section>
 
     <footer class="footer">
       <span>作者：Vega · 未经授权禁止外传</span>
-      <button class="footer-support-btn" id="open-support">如果你觉得可以 可以支持一下我的作品</button>
+      <button class="footer-support-btn" id="open-support">支持作者</button>
       <span id="footer-credit">题库：开放许可数据集</span>
     </footer>
   </main>
@@ -136,7 +101,7 @@
   <nav class="mobile-bottom-nav" id="mobile-bottom-nav" aria-label="手机底部导航">
     <button data-view="home"><i data-lucide="house"></i><span>今日</span></button>
     <button data-view="practice"><i data-lucide="book-open-check"></i><span>学习</span></button>
-    <button data-view="ai"><i data-lucide="bot"></i><span>AI</span></button>
+    <button data-view="ai"><i data-lucide="bot"></i><span>陪练</span></button>
     <button data-view="review"><i data-lucide="notebook-pen"></i><span>错题</span></button>
     <button data-view="account"><i data-lucide="user-round"></i><span>我的</span></button>
   </nav>
@@ -165,7 +130,7 @@
 
   <div class="support-modal" id="support-modal" hidden>
     <div class="support-modal-card" role="dialog" aria-modal="true" aria-labelledby="support-title">
-      <button class="support-close" id="support-close" aria-label="关闭赞赏">×</button>
+      <button class="support-close" id="support-close" aria-label="关闭赞赏"><i data-lucide="x"></i></button>
       <span class="eyebrow">SUPPORT THE AUTHOR</span>
       <h2 id="support-title">如果你觉得可以 可以支持一下我的作品</h2>
       <img src="assets/vega-support.jpg" alt="Vega 赞赏码" />
@@ -175,7 +140,7 @@
 
   <div class="announcement-modal" id="announcement-modal" hidden>
     <div class="announcement-card" role="dialog" aria-modal="true" aria-labelledby="announcement-title">
-      <button class="announcement-close" id="announcement-close" aria-label="关闭更新公告">×</button>
+      <button class="announcement-close" id="announcement-close" aria-label="关闭更新公告"><i data-lucide="x"></i></button>
       <span class="eyebrow">WHAT'S NEW</span>
       <h2 id="announcement-title">更新完成</h2>
       <ul class="announcement-list" id="announcement-list"></ul>
@@ -185,6 +150,14 @@
     </div>
   </div>
 
+  <section class="welcome-screen" id="welcome-screen" role="dialog" aria-modal="true" aria-labelledby="welcome-title" hidden>
+    <button class="welcome-skip" id="welcome-skip">跳过 <i data-lucide="arrow-right"></i></button>
+    <div class="welcome-content"><div class="welcome-logo"><i data-lucide="stamp"></i><span>IELTS Passport</span></div>
+    <h2 id="welcome-title">欢迎，开始你的第一天。</h2><p>从词汇到开口，按自己的节奏开始。</p>
+    <button class="btn primary" id="welcome-enter">进入学习 <i data-lucide="arrow-right"></i></button></div>
+    <span class="welcome-foot">作者 Vega · 未经授权禁止外传</span>
+  </section>
+  <script src="theme.js"></script>
   <script src="vendor/lucide.min.js"></script>
   <script src="data/learn.js"></script>
   <script src="data/vocab-levels.js"></script>
@@ -201,7 +174,12 @@
   <script src="data/version.js"></script>
   <script src="data/cloud-config.js"></script>
   <script src="data/changelog.js"></script>
+  <script src="welcome-bootstrap.js"></script>
   <script src="hybrid-update.js"></script>
+  <script src="motion.js"></script>
   <script src="app.js"></script>
+  <script src="shell.js"></script>
+  <script src="study-panel.js"></script>
+  <script src="ios.js"></script>
 </body>
 </html>

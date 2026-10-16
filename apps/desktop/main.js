@@ -25,9 +25,11 @@ function createWindow() {
   const win = new BrowserWindow({
     width: 1440,
     height: 960,
-    minWidth: 980,
+    minWidth: 1100,
     minHeight: 700,
-    backgroundColor: "#eef3ef",
+    backgroundColor: "#f2f2f7",
+    autoHideMenuBar: true,
+    show: !app.commandLine.hasSwitch("smoke-test"),
     title: "IELTS Passport",
     icon: path.resolve(__dirname, "build", "icon.png"),
     webPreferences: {

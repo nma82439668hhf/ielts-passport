@@ -7,8 +7,8 @@
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "background_color": "#f5f4f0",
-  "theme_color": "#f5f4f0",
+  "background_color": "#f2f2f7",
+  "theme_color": "#f2f2f7",
   "icons": [
     {
       "src": "icons/icon-192.png",
@@ -23,7 +23,10 @@
       "purpose": "any maskable"
     }
   ],
-  "categories": ["education", "productivity"],
+  "categories": [
+    "education",
+    "productivity"
+  ],
   "shortcuts": [
     {
       "name": "AI 英语对话",

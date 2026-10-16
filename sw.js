@@ -1,8 +1,19 @@
-const CACHE_NAME = "ielts-passport-v5";
+const CACHE_NAME = "ielts-passport-responsive-web-v2";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css",
+  "./design.css",
+  "./motion.css",
+  "./study-panel.css",
+  "./theme.css",
+  "./theme.js",
+  "./ios.css",
+  "./ios.js",
+  "./motion.js",
+  "./shell.js",
+  "./welcome-bootstrap.js",
+  "./study-panel.js",
   "./app.js",
   "./hybrid-update.js",
   "./version.json",
@@ -26,6 +37,7 @@ const APP_SHELL = [
   "./data/vocab-meta.js",
   "./data/version.js",
   "./data/cloud-config.js",
+  "./data/changelog.js",
   "./data/remote-version.js"
 ];
 
@@ -58,7 +70,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  const networkFirst = request.mode === "navigate" || /(?:app\.js|styles\.css|index\.html|manifest\.webmanifest|sw\.js|data\/cloud-config\.js)$/.test(url.pathname);
+  const networkFirst = request.mode === "navigate" || /(?:app\.js|styles\.css|design\.css|motion\.(?:css|js)|theme\.(?:css|js)|ios\.(?:css|js)|study-panel\.(?:css|js)|shell\.js|welcome-bootstrap\.js|index\.html|manifest\.webmanifest|sw\.js|version\.json|data\/(?:cloud-config|changelog|version|remote-version)\.js)$/.test(url.pathname);
   if (networkFirst) {
     event.respondWith(
       fetch(request).then((response) => {
@@ -67,7 +79,8 @@ self.addEventListener("fetch", (event) => {
           caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
         }
         return response;
-      }).catch(() => caches.match(request))
+      }).catch(async () => (await caches.match(request)) ||
+        (request.mode === "navigate" ? caches.match("./index.html") : Response.error()))
     );
     return;
   }

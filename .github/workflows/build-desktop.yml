@@ -1,72 +1,37 @@
-name: Build desktop apps
+name: Build Windows app
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - "v*"
+    inputs:
+      source_ref:
+        description: Exact source commit to build
+        required: true
+        default: main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            command: dist:win
-            artifact: desktop-windows
-          - os: macos-latest
-            command: dist:mac
-            artifact: desktop-macos
-          - os: ubuntu-latest
-            command: dist:linux
-            artifact: desktop-linux
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref }}
       - uses: pnpm/action-setup@v4
         with:
           version: 11
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Install dependencies
-        run: pnpm --dir apps/desktop install --no-frozen-lockfile
-      - name: Build package
-        run: pnpm --dir apps/desktop ${{ matrix.command }}
+      - name: Install locked dependencies
+        run: pnpm --dir apps/desktop install --frozen-lockfile
+      - name: Build Windows installer
+        run: pnpm --dir apps/desktop dist:win
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: apps/desktop/dist/**
+          name: windows-installer
+          path: apps/desktop/dist/*.exe
           if-no-files-found: error
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - id: get_version
-        run: echo "version=$(node -p "require('./apps/desktop/package.json').version")" >> $GITHUB_OUTPUT
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          merge-multiple: true
-      - name: Normalize desktop asset names
-        run: |
-          VERSION="${{ steps.get_version.outputs.version }}"
-          mkdir -p release
-          cp "artifacts/IELTS Passport Setup ${VERSION}.exe" "release/IELTS-Passport-Windows-Setup-${VERSION}.exe"
-          cp "artifacts/IELTS Passport-${VERSION}-arm64.dmg" "release/IELTS-Passport-macOS-arm64-${VERSION}.dmg"
-          cp "artifacts/IELTS Passport-${VERSION}.AppImage" "release/IELTS-Passport-Linux-${VERSION}.AppImage"
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ steps.get_version.outputs.version }}
-          name: IELTS Passport v${{ steps.get_version.outputs.version }}
-          body: Desktop apps with hybrid cloud update, WeChat/QQ login support, Vega authorship notice and support QR.
-          files: release/*
-          make_latest: true

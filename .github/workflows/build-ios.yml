@@ -1,16 +1,15 @@
-name: Build iOS app
+name: Build iOS app (paused)
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - "v*"
 
 permissions:
   contents: write
 
 jobs:
   build:
+    # Resume only after an explicit user request; manual dispatch must also skip.
+    if: ${{ false }}
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,6 +41,7 @@ jobs:
           if-no-files-found: error
 
   release:
+    if: ${{ false }}
     needs: build
     runs-on: ubuntu-latest
     steps:

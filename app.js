@@ -23,7 +23,7 @@
   }
 
   const VIEW_TITLES = {
-    home: "今日学习",
+    home: "学习概览",
     path: "学习地图",
     lesson: "学习模块",
     library: "阅读与写作",
@@ -31,7 +31,7 @@
     challenges: "题型挑战",
     exam: "模拟考试",
     videos: "教学系列",
-    ai: "AI 英语对话",
+    ai: "英语陪练",
     account: "账户与同步",
     settings: "设置",
     review: "错题复习",
@@ -195,6 +195,11 @@
       messages: [],
       stepIndex: 0,
       thinking: false,
+      requestGeneration: 0,
+      pendingRequest: null,
+      speechGeneration: 0,
+      formDrafts: {},
+      settingsOpen: false,
       listening: false,
       autoMode: false,
       status: "idle",
@@ -211,8 +216,8 @@
       formMode: "register",
       registerStorage: "cloud",
     },
-    config: { requireLogin: true, allowRegistration: true, oauth: { wechatAppId: "", qqAppId: "", workerUrl: "" } },
-    settings: { voiceEnabled: true, autoEncourage: true, voiceURI: "", rate: 0.82, ttsCompat: false, lookupEnabled: true },
+    config: { requireLogin: false, allowRegistration: true, oauth: { wechatAppId: "", qqAppId: "", workerUrl: "" } },
+    settings: { voiceEnabled: true, autoEncourage: true, voiceURI: "", rate: 0.82, ttsCompat: false, lookupEnabled: true, theme: "auto" },
     libraryTab: "stories",
     libraryItemId: "",
   };
@@ -285,17 +290,22 @@
   function loadUserSettings() {
     try {
       const raw = localStorage.getItem("ielts_user_settings");
-      if (raw) state.settings = { ...state.settings, ...JSON.parse(raw) };
+      if (raw) {
+        const settings = JSON.parse(raw);
+        if (settings && typeof settings === "object" && !Array.isArray(settings)) state.settings = { ...state.settings, ...settings };
+      }
     } catch (e) {
       /* ignore */
     }
     state.ttsCompat = Boolean(state.settings.ttsCompat);
     state.lookupEnabled = state.settings.lookupEnabled !== false;
+    if (window.IELTSTheme) state.settings.theme = window.IELTSTheme.getPreference();
   }
 
   function saveUserSettings() {
     state.settings.ttsCompat = Boolean(state.ttsCompat);
     state.settings.lookupEnabled = state.lookupEnabled;
+    if (window.IELTSTheme) state.settings.theme = window.IELTSTheme.getPreference();
     try {
       localStorage.setItem("ielts_user_settings", JSON.stringify(state.settings));
       localStorage.setItem("ielts_tts_compat", state.ttsCompat ? "1" : "0");
@@ -685,6 +695,8 @@
 
   let activeAudio = null;
   let activeUtterance = null;
+  let speechAudioGeneration = 0;
+  let speechFallbackTimer = null;
   const audioCache = new Map();
   let ttsQueue = [];
   let ttsOnEnd = null;
@@ -722,6 +734,9 @@
   }
 
   function stopSpeechAudio() {
+    speechAudioGeneration += 1;
+    window.clearTimeout(speechFallbackTimer);
+    speechFallbackTimer = null;
     if (window.speechSynthesis) window.speechSynthesis.cancel();
     ttsQueue = [];
     ttsOnEnd = null;
@@ -836,20 +851,28 @@
       return;
     }
     const utter = new SpeechSynthesisUtterance(value);
+    const generation = speechAudioGeneration;
     activeUtterance = utter;
     let started = false;
-    let fallbackTimer = null;
     const fallback = () => {
-      if (started) return;
+      if (started || generation !== speechAudioGeneration) return;
       started = true;
-      if (fallbackTimer) window.clearTimeout(fallbackTimer);
+      window.clearTimeout(speechFallbackTimer);
+      speechFallbackTimer = null;
       try { window.speechSynthesis.cancel(); } catch (e) { /* ignore */ }
       activeUtterance = null;
       playCompatibleTts(value, onEnd);
     };
-    utter.onstart = () => { started = true; if (fallbackTimer) window.clearTimeout(fallbackTimer); };
+    utter.onstart = () => {
+      if (generation !== speechAudioGeneration) return;
+      started = true;
+      window.clearTimeout(speechFallbackTimer);
+      speechFallbackTimer = null;
+    };
     utter.onerror = fallback;
-    if (typeof onEnd === "function") utter.onend = onEnd;
+    if (typeof onEnd === "function") utter.onend = () => {
+      if (generation === speechAudioGeneration) onEnd();
+    };
     utter.lang = "en-US";
     utter.rate = preferredRate;
     utter.volume = 1;
@@ -862,7 +885,7 @@
     } catch (e) {
       fallback();
     }
-    fallbackTimer = window.setTimeout(() => { if (!started) fallback(); }, 750);
+    if (!started && generation === speechAudioGeneration) speechFallbackTimer = window.setTimeout(fallback, 750);
   }
 
   function speakWord(word, trigger) {
@@ -1090,10 +1113,13 @@
     $("#pop-word").textContent = value;
     $("#pop-phonetic").textContent = "";
     $("#pop-source").textContent = "";
-    $("#pop-body").innerHTML = `<div class="pop-loading"><span></span>正在查词…</div>`;
+    $("#pop-body").setAttribute("aria-busy", "true");
+    $("#pop-body").innerHTML = window.IELTSMotion ? window.IELTSMotion.skeleton("正在查词…") : `<div class="pop-loading">正在查词…</div>`;
     positionWordPopover(anchor);
     const result = await lookupWord(value);
-    if (token !== popoverToken || !result) return;
+    if (token !== popoverToken) return;
+    $("#pop-body").removeAttribute("aria-busy");
+    if (!result) { $("#pop-body").textContent = "暂未找到释义，请稍后重试。"; return; }
     renderPopover(result);
     positionWordPopover(currentPopoverAnchor || anchor);
   }
@@ -1130,7 +1156,7 @@
   }
 
   function xpForLevel(level) {
-    return [0, 80, 200, 380, 620, 920, 1280, 1700, 2200][Math.max(0, Math.min(8, level - 1))] || 2200;
+    return [0, 80, 200, 380, 620, 920, 1280, 1700, 2200][Math.max(0, Math.min(8, level - 1))] ?? 2200;
   }
 
   function levelBandLabel(level) {
@@ -1231,6 +1257,7 @@
   }
 
   function setView(view, param) {
+    if (state.view === "ai" && view !== "ai") leaveAiView();
     if (state.config.requireLogin && !state.account.user && !["account", "about"].includes(view)) {
       state.view = "account";
       state.param = null;
@@ -1259,6 +1286,7 @@
     if (state.config.requireLogin && !state.account.user && !["account", "about"].includes(state.view)) {
       state.view = "account";
     }
+    if (window.IELTSMotion) window.IELTSMotion.beforeRender({view:state.view,param:state.param,key:[state.param,state.libraryTab,state.libraryItemId,state.practiceSkill,state.practiceLevel,state.vocabLevel,state.vocabUnit].join(":"),detail:!!state.libraryItemId,result:!!state.session?.result});
     titleEl.textContent = VIEW_TITLES[state.view] || "今日学习";
     $$(".nav-item").forEach((btn) => {
       const activeView = btn.dataset.view === state.view;
@@ -1304,7 +1332,9 @@
     }
 
     root.innerHTML = html;
+    if (window.IELTSTheme) window.IELTSTheme.syncControls();
     refreshIcons();
+    if (window.IELTSMotion) window.IELTSMotion.afterRender();
     if (state.view === "ai") window.requestAnimationFrame(scrollAiMessages);
   }
 
@@ -1318,83 +1348,20 @@
   }
 
   function renderHome() {
-    const stats = state.progress.stats;
-    const totalAttempted = Object.values(stats).reduce((n, s) => n + (s.attempted || 0), 0);
-    const totalCorrect = Object.values(stats).reduce((n, s) => n + (s.correct || 0), 0);
-    const accuracy = totalAttempted ? Math.round((totalCorrect / totalAttempted) * 100) : 0;
-    const daily = ensureToday();
-    const dailyGoal = 20;
-    const dailyPct = Math.min(100, Math.round((daily.words / dailyGoal) * 100));
-    const player = state.progress.player;
-    player.estimatedBand = estimateBand();
-    const currentLevelXp = xpForLevel(player.level);
-    const nextLevelXp = xpForLevel(player.level + 1);
-    const levelPct = nextLevelXp === currentLevelXp ? 100 : Math.min(100, Math.round(((player.xp - currentLevelXp) / (nextLevelXp - currentLevelXp)) * 100));
-    const target = state.progress.target;
+    const stats=state.progress.stats, daily=ensureToday(), player=state.progress.player;
+    const attempted=Object.values(stats).reduce((n,s)=>n+(s.attempted||0),0);
+    const correct=Object.values(stats).reduce((n,s)=>n+(s.correct||0),0);
+    const current=xpForLevel(player.level), next=xpForLevel(player.level+1);
+    const pct=Math.max(0,Math.min(100,(player.xp-current)/(next-current||1)*100));
+    const preview=getLevelVocab(state.vocabLevel).find(x=>x.w.length>=6&&x.w.length<=9)||getLevelVocab(state.vocabLevel)[0];
+    const rows=[['practice','book-open-check','题库练习','词汇、语法、听力与阅读，按阶段练习','分级题库'],['ai','messages-square','英语陪练','从日常话题开始，练习用英语表达','对话练习'],['exam','clipboard-check','模拟考试','用一套完整练习，了解当前的薄弱项','综合训练']];
+    return `<div class="overview-heading"><div><h2>今天</h2><p>先学词汇，再练表达。</p></div><button class="text-link" data-action="go" data-view="path">学习地图<i data-lucide="arrow-up-right"></i></button></div>
+    <div class="home-workspace"><div><section class="primary-task" aria-labelledby="vocab-task-title"><div><h3 id="vocab-task-title">今日词汇</h3><p>20 个单词，按自己的节奏学。</p><div class="task-context"><i data-lucide="notebook-tabs"></i>${esc(state.vocabLevel)} · Unit ${state.vocabUnit}</div><button class="btn primary" data-action="go" data-view="vocab">开始学词<i data-lucide="arrow-right"></i></button></div><div class="task-preview"><span class="preview-label">词汇预览</span><strong>${esc(preview.w)}</strong><span>${esc(preview.zh||preview.meaning||'')}</span></div></section>
+    <div class="today-progress"><span>今日单词</span><div class="word-sequence" aria-hidden="true">${Array.from({length:20},(_,i)=>`<span class="${i<daily.words?'done':''}"></span>`).join('')}</div><strong>${daily.words} / 20</strong></div>
+    <section class="study-queue"><div class="section-line"><h3>接着练一练</h3><span>按自己的节奏</span></div><div class="ios-group">${rows.map(([view,icon,title,desc,meta])=>`<button class="study-row" data-action="go" data-view="${view}"><i class="row-icon" data-lucide="${icon}"></i><span><strong>${title}</strong><small>${desc}</small></span><span class="row-meta">${meta}</span><i data-lucide="chevron-right"></i></button>`).join('')}</div></section>
+    <div class="weekly-strip"><div><strong>${attempted}</strong><span>累计练习</span></div><div><strong>${attempted?Math.round(correct/attempted*100):0}%</strong><span>练习正确率</span></div><div><strong>${state.progress.streak.count}</strong><span>连续学习天数</span></div></div></div>
+    <aside class="study-summary" aria-label="学习进度"><h3>你的学习进度</h3><div class="summary-goal"><strong>${state.progress.target.toFixed(1)}</strong><span>目标 Band</span></div><p class="summary-note">从基础开始，逐级练习。</p><div class="summary-xp"><strong>Lv.${player.level} 当前等级</strong><span>${player.xp} / ${next} XP</span></div><div class="progress-track"><span style="width:${pct}%"></span></div><div class="summary-skills"><p>各项练习正确率</p><div class="skill-chart" role="group" aria-label="四项练习正确率">${['listening','reading','writing','speaking'].map(skill=>`<div class="skill-column" aria-label="${SKILL_META[skill].label}：${stats[skill].attempted?scorePercent(skill)+'%':'尚未练习'}"><span class="skill-value">${stats[skill].attempted?scorePercent(skill)+'%':'—'}</span><div class="skill-column-track" aria-hidden="true"><span class="skill-column-bar" data-chart-bar="${skill}" data-chart-value="${scorePercent(skill)}" style="height:${scorePercent(skill)}%"></span></div><span class="skill-column-label">${SKILL_META[skill].label}</span></div>`).join('')}</div>${['listening','reading','writing','speaking'].every(skill=>!stats[skill].attempted)?'<p class="skill-chart-empty">完成练习后，这里会显示你的进度。</p>':''}</div><p class="summary-footnote">练习数据仅供学习参考，不等同于正式考试成绩。</p></aside></div><p class="home-bottom-note">学习记录保存在当前浏览器，可在账户页导出备份或登录同步。</p>`;
 
-    const tasks = [
-      { view: "vocab", icon: "notebook-tabs", color: "gold", title: "背 20 个分级词", desc: `今天已学 ${daily.words} 个 · 约 8 分钟` },
-      { view: "practice", icon: "book-open-check", color: "red", title: "做一套分级练习", desc: "按你的当前阶段选择题目" },
-      { view: "challenges", icon: "trophy", color: "teal", title: "完成一个题型挑战", desc: "单词、听力、阅读或混合挑战" },
-      { view: "exam", icon: "clipboard-check", color: "gold", title: "参加一次模拟考试", desc: "自动换算雅思预测分" },
-    ];
-
-    const skillRows = ["listening", "reading", "writing", "speaking"]
-      .map((skill) => {
-        const p = scorePercent(skill);
-        return `
-          <div class="progress-row">
-            <div class="progress-label"><span>${SKILL_META[skill].label}</span><span>${p}%</span></div>
-            <div class="bar ${SKILL_META[skill].color}"><span style="width:${p}%"></span></div>
-          </div>`;
-      })
-      .join("");
-
-    return `
-      <div class="hero-band reveal">
-        <span class="eyebrow">Lv.${player.level} · 预测 Band ${player.estimatedBand.toFixed(1)} · TARGET ${target.toFixed(1)}</span>
-        <h2>今天，为你的雅思上岸前进一小步。</h2>
-        <p>今天已经学习 ${daily.words} 个单词、完成 ${daily.questions} 道题。先补基础词汇和语法，再用分级题库和模拟考试提升分数。</p>
-        <div class="hero-actions">
-          <button class="btn" data-action="go" data-view="exam"><i data-lucide="clipboard-check"></i>模拟考试</button>
-          <button class="btn ghost-on-dark" data-action="go" data-view="challenges" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.45)"><i data-lucide="trophy"></i>题型挑战</button>
-        </div>
-      </div>
-
-      <div class="stat-grid">
-        <div class="stat-card reveal"><div class="stat-top"><span>今日单词</span><i data-lucide="notebook-tabs"></i></div><strong>${daily.words}</strong><div class="stat-note">目标 ${dailyGoal} 词 · ${dailyPct}%</div></div>
-        <div class="stat-card reveal"><div class="stat-top"><span>累计做题</span><i data-lucide="list-checks"></i></div><strong>${totalAttempted}</strong><div class="stat-note">道题</div></div>
-        <div class="stat-card reveal"><div class="stat-top"><span>正确率</span><i data-lucide="target"></i></div><strong>${accuracy}%</strong><div class="stat-note">${totalCorrect} / ${totalAttempted}</div></div>
-        <div class="stat-card reveal"><div class="stat-top"><span>连续学习</span><i data-lucide="flame"></i></div><strong>${state.progress.streak.count}</strong><div class="stat-note">天</div></div>
-      </div>
-
-      <div class="dashboard-grid">
-        <section class="panel daily-card reveal">
-          <h3>今日学习计划</h3>
-          <div class="task-list">
-            ${tasks.map((task) => `
-              <div class="task" data-action="go" data-view="${task.view}">
-                <div class="task-icon ${task.color}"><i data-lucide="${task.icon}"></i></div>
-                <div class="task-body"><strong>${esc(task.title)}</strong><span>${esc(task.desc)}</span></div>
-                <span class="task-check"><i data-lucide="chevron-right"></i></span>
-              </div>`).join("")}
-          </div>
-        </section>
-
-        <section class="panel skill-progress reveal">
-          <h3>玩家等级与四科进度</h3>
-          <div class="player-line">
-            <div class="player-level">Lv.${player.level}</div>
-            <div class="player-copy"><strong>${levelBandLabel(player.level)}</strong><span>XP ${player.xp} / ${nextLevelXp === currentLevelXp ? "MAX" : nextLevelXp}</span></div>
-          </div>
-          <div class="bar gold" style="margin-bottom:16px"><span style="width:${levelPct}%"></span></div>
-          ${skillRows}
-          <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line)">
-            <div class="progress-label"><span>目标分数</span><span style="color:var(--red-deep)">Band ${target.toFixed(1)}</span></div>
-            <div class="bar red"><span style="width:${Math.min(100, Math.round((target / 9) * 100))}%"></span></div>
-          </div>
-        </section>
-      </div>`;
   }
 
   function renderPath() {
@@ -1647,10 +1614,11 @@
     stopSessionTimer();
     const statSkill = session.type === "listening" ? "listening" : session.type === "reading" ? "reading" : "vocab";
     state.currentTest = { skill: session.kind, id: `${session.kind}:${session.type}:${session.level}`, checked: false, statSkill };
+    const xpBefore = state.progress.player.xp;
     const result = checkAnswers();
     if (!result) return;
     const band = session.kind === "mock" ? mockBandFromScore(result.score, session.level) : 0;
-    const xp = result.correct * 10 + 15;
+    const xp = state.progress.player.xp - xpBefore;
     if (session.kind === "mock") {
       state.progress.player.bestBand = Math.max(state.progress.player.bestBand || 0, band);
       state.progress.player.mockScores = (state.progress.player.mockScores || []).concat({ level: session.level, score: result.score, band, date: todayKey() }).slice(-20);
@@ -1870,13 +1838,60 @@
     return { reply, feedback: note };
   }
 
-  async function callAiApi(history) {
-    const settings = state.ai.settings;
+  function aiRequestIsCurrent(request) {
+    return request.generation === state.ai.requestGeneration
+      && request.scenario === state.ai.scenario
+      && request.messages === state.ai.messages;
+  }
+
+  function invalidateAiRequest() {
+    state.ai.requestGeneration += 1;
+    const pending = state.ai.pendingRequest;
+    if (pending) pending.controller.abort();
+    state.ai.pendingRequest = null;
+    state.ai.thinking = false;
+    state.ai.status = "idle";
+  }
+
+  function rememberAiForm() {
+    const settingsPanel = $("#view-root details.ai-settings-card");
+    if (settingsPanel) state.ai.settingsOpen = settingsPanel.open;
+    const fields = $$("#view-root .ai-layout input[id], #view-root .ai-layout select[id], #view-root .ai-layout textarea[id]");
+    fields.forEach(field => { state.ai.formDrafts[field.id] = field.value; });
+    const focused = document.activeElement;
+    return focused && fields.includes(focused)
+      ? { id: focused.id, start: focused.selectionStart, end: focused.selectionEnd }
+      : null;
+  }
+
+  function renderAiUpdate() {
+    if (state.view !== "ai") return;
+    const focused = rememberAiForm();
+    render();
+    if (focused) {
+      const field = document.getElementById(focused.id);
+      if (field) {
+        field.focus({ preventScroll: true });
+        if (typeof field.setSelectionRange === "function" && Number.isInteger(focused.start)) {
+          field.setSelectionRange(focused.start, focused.end);
+        }
+      }
+    }
+  }
+
+  function leaveAiView() {
+    rememberAiForm();
+    stopAiListening(true);
+  }
+
+  async function callAiApi(history, request) {
+    const settings = request.settings;
     if (!settings.apiKey) throw new Error("missing api key");
-    const scenario = AI_SCENARIOS[state.ai.scenario];
+    const scenario = AI_SCENARIOS[request.scenario];
     const system = `You are a patient English conversation tutor for a beginner Chinese learner. Keep your English simple, ask one question at a time, and gently correct important mistakes. Current scenario: ${scenario ? scenario.title : "free conversation"}.`;
     const res = await fetch(`${settings.baseUrl.replace(/\/$/, "")}/chat/completions`, {
       method: "POST",
+      signal: request.controller.signal,
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${settings.apiKey}`,
@@ -1892,17 +1907,18 @@
     return (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || "";
   }
 
-  async function getAiReply(text) {
-    if (state.ai.settings.mode === "api" && state.ai.settings.apiKey) {
+  async function getAiReply(text, request) {
+    if (request.settings.mode === "api" && request.settings.apiKey) {
       try {
-        const history = state.ai.messages.map((m) => ({ role: m.role === "ai" ? "assistant" : "user", content: m.text }));
-        const reply = await callAiApi(history);
+        const reply = await callAiApi(request.history, request);
+        if (!aiRequestIsCurrent(request)) return null;
         if (reply) return { reply, feedback: englishFeedback(text).notes.join("；") || "Good. Continue the conversation in English." };
       } catch (e) {
-        toast("AI 模型连接失败，已切换到内置陪练");
+        if (!aiRequestIsCurrent(request)) return null;
+        if (state.view === "ai") toast(request.timedOut ? "AI 回复超时，本次使用内置陪练" : "AI 模型连接失败，本次使用内置陪练");
       }
     }
-    return builtinAiReply(text);
+    return aiRequestIsCurrent(request) ? builtinAiReply(text) : null;
   }
 
   function scrollAiMessages() {
@@ -1912,30 +1928,73 @@
 
   async function sendAiMessage(text) {
     const value = String(text || "").trim();
-    if (!value || state.ai.thinking) return;
+    if (!value || state.ai.thinking || state.view !== "ai") return;
     if (state.ai.recognition && state.ai.listening) {
       state.ai.recognitionPaused = true;
       try { state.ai.recognition.stop(); } catch (e) { /* ignore */ }
       state.ai.listening = false;
     }
     state.ai.messages.push({ role: "user", text: value, feedback: "" });
+    const request = {
+      generation: ++state.ai.requestGeneration,
+      scenario: state.ai.scenario,
+      messages: state.ai.messages,
+      settings: { ...state.ai.settings },
+      history: state.ai.messages.map(m => ({ role: m.role === "ai" ? "assistant" : "user", content: m.text })),
+      progressKey: progressStorageKey,
+      controller: new AbortController(),
+      timedOut: false,
+    };
+    state.ai.pendingRequest = request;
     state.ai.thinking = true;
     state.ai.status = "thinking";
-    render();
-    const result = await getAiReply(value);
-    state.ai.messages.push({ role: "ai", text: result.reply, feedback: result.feedback || "" });
-    state.ai.thinking = false;
-    state.ai.status = "speaking";
-    recordDailyQuestions(1);
-    addXp(5);
-    render();
-    speakAiReply(result.reply);
+    renderAiUpdate();
+    const timeout = window.setTimeout(() => {
+      request.timedOut = true;
+      request.controller.abort();
+    }, 30000);
+    try {
+      const result = await getAiReply(value, request);
+      if (!result || !aiRequestIsCurrent(request)) return;
+      state.ai.messages.push({ role: "ai", text: result.reply, feedback: result.feedback || "" });
+      state.ai.thinking = false;
+      state.ai.status = "idle";
+      if (request.progressKey === progressStorageKey) {
+        recordDailyQuestions(1);
+        addXp(5);
+      }
+      if (state.view === "ai") {
+        renderAiUpdate();
+        speakAiReply(result.reply);
+      }
+    } catch (e) {
+      if (aiRequestIsCurrent(request)) {
+        state.ai.thinking = false;
+        state.ai.status = "idle";
+        if (state.view === "ai") {
+          renderAiUpdate();
+          toast("暂时无法回复，请重新发送消息");
+        }
+      }
+    } finally {
+      window.clearTimeout(timeout);
+      if (state.ai.pendingRequest === request) state.ai.pendingRequest = null;
+    }
   }
 
   function speakAiReply(text) {
+    if (state.view !== "ai") return;
+    if (!state.settings.voiceEnabled) {
+      state.ai.status = "idle";
+      state.ai.recognitionPaused = false;
+      updateAiStatus();
+      return;
+    }
+    const generation = ++state.ai.speechGeneration;
     state.ai.status = "speaking";
     updateAiStatus();
     speakText(text, 0.82, () => {
+      if (state.view !== "ai" || generation !== state.ai.speechGeneration) return;
       state.ai.status = "idle";
       state.ai.recognitionPaused = false;
       updateAiStatus();
@@ -1956,6 +2015,7 @@
   }
 
   function startAiListening() {
+    if (state.view !== "ai" || state.ai.thinking) return;
     const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!Recognition) {
       toast("当前浏览器不支持语音识别，请使用 Edge 或 Chrome，或直接输入英文");
@@ -1967,6 +2027,7 @@
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.onresult = (event) => {
+        if (state.view !== "ai" || state.ai.recognitionPaused) return;
         let finalText = "";
         let interimText = "";
         for (let i = event.resultIndex; i < event.results.length; i += 1) {
@@ -1987,7 +2048,7 @@
         state.ai.listening = false;
         if (state.ai.status === "listening") state.ai.status = "idle";
         updateAiStatus();
-        if (state.ai.autoMode && !state.ai.thinking && !state.ai.recognitionPaused) window.setTimeout(startAiListening, 450);
+        if (state.view === "ai" && state.ai.autoMode && !state.ai.thinking && !state.ai.recognitionPaused) window.setTimeout(startAiListening, 450);
       };
       state.ai.recognition = recognition;
     }
@@ -2005,23 +2066,29 @@
   }
 
   function stopAiListening(manual = false) {
-    if (manual) state.ai.autoMode = false;
+    if (manual) {
+      state.ai.autoMode = false;
+      state.ai.speechGeneration += 1;
+      stopSpeechAudio();
+    }
     if (state.ai.recognition) {
       try { state.ai.recognition.stop(); } catch (e) { /* ignore */ }
     }
     state.ai.listening = false;
-    state.ai.status = "idle";
+    state.ai.status = state.ai.thinking ? "thinking" : "idle";
     updateAiStatus();
   }
 
   function startAiScenario(id) {
+    rememberAiForm();
+    invalidateAiRequest();
     stopAiListening(true);
     state.ai.scenario = id;
     state.ai.stepIndex = 0;
     const scenario = AI_SCENARIOS[id];
     const first = scenario ? scenario.steps[0].ai : AI_FREE_PROMPTS[0];
     state.ai.messages = [{ role: "ai", text: first, feedback: "" }];
-    render();
+    renderAiUpdate();
     speakAiReply(first);
   }
 
@@ -2042,21 +2109,23 @@
     const scenarios = Object.entries(AI_SCENARIOS).map(([id, s]) => `<button class="ai-scenario ${state.ai.scenario === id ? "is-active" : ""}" data-action="set-ai-scenario" data-id="${id}"><strong>${esc(s.title)}</strong><span>${esc(s.level)} · ${esc(s.en)}</span></button>`).join("")
       + `<button class="ai-scenario ${state.ai.scenario === "free" ? "is-active" : ""}" data-action="set-ai-scenario" data-id="free"><strong>自由对话</strong><span>随机话题 · Free talk</span></button>`;
     const s = state.ai.settings;
+    const draft = (id, fallback = "") => Object.prototype.hasOwnProperty.call(state.ai.formDrafts, id) ? state.ai.formDrafts[id] : fallback;
+    const draftMode = draft("ai-mode", s.mode);
     const speechSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
     const statusLabel = state.ai.status === "listening" ? "Listening" : state.ai.status === "thinking" ? "Thinking" : state.ai.status === "speaking" ? "Speaking" : state.ai.autoMode ? "Realtime on" : "Ready";
     return `
-      <div class="section-head reveal"><div><h2>AI 英语对话</h2><p>一键开始实时语音对话：你说英语 → AI 语音回复 → 自动继续听你说。首次使用需要允许麦克风。</p></div><span class="tag teal">实时语音陪练</span></div>
+      <div class="section-head reveal"><div><h2>英语陪练</h2><p>选择一个话题，先用文字开始。也可以打开麦克风练习口语。</p></div><span class="tag teal">内置场景陪练</span></div>
       <div class="ai-scenario-grid reveal">${scenarios}</div>
       <div class="ai-layout">
         <section class="panel ai-chat-card reveal">
           <div class="ai-chat-head"><div><strong>${esc(scenario ? scenario.title : "自由对话")}</strong><span>${esc(scenario ? scenario.goal : "练习自由表达，AI 会继续追问。")}</span></div><span class="tag ${state.ai.listening || state.ai.status === "speaking" ? "red" : "teal"}">${statusLabel}</span></div>
-          <div class="ai-messages" id="ai-messages">${messages}${state.ai.thinking ? `<div class="ai-message ai"><div class="ai-avatar">AI</div><div class="ai-bubble"><span class="typing-dots">正在输入</span></div></div>` : ""}</div>
+          <div class="ai-messages" id="ai-messages" aria-live="polite" aria-busy="${state.ai.thinking}">${messages}${state.ai.thinking ? `<div class="ai-message ai"><div class="ai-avatar">AI</div><div class="ai-bubble">${window.IELTSMotion ? window.IELTSMotion.skeleton("陪练正在回复…") : '<span class="typing-dots">正在输入</span>'}</div></div>` : ""}</div>
           <div class="ai-live" id="ai-live-text"></div>
           ${speechSupported ? "" : `<div class="ai-warning">当前浏览器不支持实时语音识别。可以继续用文字对话，或使用最新版 Edge / Chrome 开启实时语音。</div>`}
           <div class="ai-input-row">
             <button class="ai-mic ${state.ai.listening ? "is-listening" : ""}" id="ai-mic" data-action="ai-toggle-mic" title="开始/停止语音输入"><i data-lucide="mic"></i></button>
-            <input id="ai-input" type="text" placeholder="Type in English, or click the microphone..." autocomplete="off" />
-            <button class="btn primary" data-action="ai-send"><i data-lucide="send"></i></button>
+            <input id="ai-input" aria-label="英语消息" type="text" value="${esc(draft("ai-input"))}" placeholder="输入英语消息…" autocomplete="off" />
+            <button class="btn primary" data-action="ai-send" aria-label="发送消息"><i data-lucide="send"></i></button>
           </div>
           <div class="ai-actions">
             ${state.ai.autoMode || state.ai.listening
@@ -2068,15 +2137,15 @@
           </div>
           <div class="ai-status" id="ai-status">${state.ai.listening ? "正在听你说英语…" : state.ai.autoMode ? "自动对话已开启，点麦克风开始" : "点麦克风开始实时英语对话"}</div>
         </section>
-        <aside class="panel ai-settings-card reveal">
-          <h3>AI 模型设置（可选）</h3>
-          <label>模式<select id="ai-mode"><option value="builtin" ${s.mode === "builtin" ? "selected" : ""}>内置陪练（无需 Key）</option><option value="api" ${s.mode === "api" ? "selected" : ""}>自定义 OpenAI 兼容模型</option></select></label>
-          <label>API Base URL<input id="ai-base-url" value="${esc(s.baseUrl)}" placeholder="https://api.openai.com/v1" /></label>
-          <label>模型<input id="ai-model" value="${esc(s.model)}" placeholder="gpt-4o-mini" /></label>
-          <label>API Key<input id="ai-key" type="password" value="${esc(s.apiKey)}" placeholder="只保存在本机浏览器" /></label>
+        <details class="panel ai-settings-card reveal" ${state.ai.settingsOpen ? "open" : ""}><summary>陪练设置</summary><div class="ai-settings-content">
+          <h3>自定义模型（可选）</h3>
+          <label>模式<select id="ai-mode"><option value="builtin" ${draftMode === "builtin" ? "selected" : ""}>内置陪练（无需 Key）</option><option value="api" ${draftMode === "api" ? "selected" : ""}>自定义 OpenAI 兼容模型</option></select></label>
+          <label>API Base URL<input id="ai-base-url" value="${esc(draft("ai-base-url", s.baseUrl))}" placeholder="https://api.openai.com/v1" /></label>
+          <label>模型<input id="ai-model" value="${esc(draft("ai-model", s.model))}" placeholder="gpt-4o-mini" /></label>
+          <label>API Key<input id="ai-key" type="password" value="${esc(draft("ai-key", s.apiKey))}" placeholder="只保存在本机浏览器" /></label>
           <button class="btn teal" data-action="save-ai-settings"><i data-lucide="save"></i>保存 AI 设置</button>
           <p>不填 Key 时使用内置陪练，仍然支持实时语音输入和语音回复。自定义模型需要接口允许浏览器跨域访问。Via 等不支持系统语音的浏览器，请打开顶部“兼容朗读”。</p>
-        </aside>
+        </div></details>
       </div>`;
   }
 
@@ -2216,8 +2285,13 @@
     const voices = (window.speechSynthesis && window.speechSynthesis.getVoices ? window.speechSynthesis.getVoices() : []).filter((v) => /^en/i.test(v.lang));
     const s = state.settings;
     return `
-      <div class="section-head reveal"><div><h2>设置</h2><p>声音、朗读兼容和自动鼓励都集中在这里。</p></div><span class="tag teal">个人设置</span></div>
+      <div class="section-head reveal"><div><h2>设置</h2><p>调整外观、声音和学习偏好。</p></div><span class="tag teal">个人设置</span></div>
       <div class="settings-grid">
+        <section class="panel settings-card appearance-card reveal">
+          <h3>界面外观</h3>
+          <label class="setting-field">显示模式<select id="theme-preference"><option value="auto">跟随系统</option><option value="light">白天模式</option><option value="dark">黑夜模式</option></select></label>
+          <p class="account-note" id="theme-status" role="status">外观设置自动保存到当前浏览器。</p>
+        </section>
         <section class="panel settings-card reveal">
           <h3>声音与朗读</h3>
           <button class="setting-row" data-action="toggle-voice"><span><strong>总声音开关</strong><small>关闭后所有单词、例句和 AI 回复都不朗读</small></span><b class="switch ${s.voiceEnabled ? "on" : ""}"></b></button>
@@ -2258,19 +2332,20 @@
   }
 
   function renderAppDownloads() {
-    const base = "https://github.com/nma82439668hhf/ielts-passport/releases/latest/download";
+    const base = "https://github.com/nma82439668hhf/ielts-passport/releases/download";
+    const versions = BANK.version?.appReleases || {};
     const items = [
-      { name: "Windows", file: "IELTS-Passport-Windows-Setup-1.0.1.exe", icon: "monitor", note: "NSIS 安装版，未签名" },
-      { name: "macOS", file: "IELTS-Passport-macOS-arm64-1.0.1.dmg", icon: "laptop", note: "Apple 芯片 DMG，未签名" },
-      { name: "Linux", file: "IELTS-Passport-Linux-1.0.1.AppImage", icon: "terminal", note: "AppImage，免安装" },
-      { name: "Android", file: "IELTS-Passport-Android-Debug-1.0.1.apk", icon: "smartphone", note: "Debug APK，可直接安装" },
-      { name: "iOS", file: "IELTS-Passport-iOS-Unsigned-1.0.1.ipa", icon: "apple", note: "未签名 IPA，需要 Apple 证书" },
+      { name: "Windows", platform:"windows", prefix:"IELTS-Passport-Windows-Setup", extension:"exe", icon: "monitor", note: "NSIS 安装版，未签名" },
+      { name: "macOS", platform:"macos", prefix:"IELTS-Passport-macOS-arm64", extension:"dmg", icon: "laptop", note: "Apple 芯片 DMG，未签名" },
+      { name: "Linux", platform:"linux", prefix:"IELTS-Passport-Linux", extension:"AppImage", icon: "terminal", note: "AppImage，免安装" },
+      { name: "Android", platform:"android", prefix:"IELTS-Passport-Android-Debug", extension:"apk", icon: "smartphone", note: "Debug APK，可直接安装" },
+      { name: "iOS", platform:"ios", prefix:"IELTS-Passport-iOS-Unsigned", extension:"ipa", icon: "apple", note: "未签名 IPA，需要 Apple 证书" },
     ];
     return `
       <details class="app-download-section reveal">
         <summary><span><strong>下载 App 安装包</strong><small>电脑、Android 和 iOS 可选安装</small></span><i data-lucide="chevron-down"></i></summary>
         <div class="download-grid">
-          ${items.map((item) => `<a class="download-card" href="${base}/${item.file}" target="_blank" rel="noopener"><div class="download-icon"><i data-lucide="${item.icon}"></i></div><strong>${esc(item.name)}</strong><span>${esc(item.note)}</span><b>下载安装包</b></a>`).join("")}
+          ${items.map((item) => { const v=versions[item.platform] || "1.2.0"; return `<a class="download-card" href="${base}/v${esc(v)}/${item.prefix}-${esc(v)}.${item.extension}" target="_blank" rel="noopener"><div class="download-icon"><i data-lucide="${item.icon}"></i></div><strong>${esc(item.name)}</strong><span>${esc(item.note)}</span><b>下载安装包</b></a>`; }).join("")}
           <button class="download-card" data-action="install-app"><div class="download-icon"><i data-lucide="globe"></i></div><strong>PWA / 网页版</strong><span>无需安装包，添加到主屏幕即可</span><b>安装 PWA</b></button>
         </div>
       </details>`;
@@ -2328,7 +2403,7 @@
 
   function closeSupport() {
     const modal = $("#support-modal");
-    if (modal) modal.hidden = true;
+    if (modal) { if (window.IELTSIOS) window.IELTSIOS.closeSheet(modal); else modal.hidden = true; }
   }
 
   function currentWebVersion() {
@@ -2363,7 +2438,7 @@
     if (modal.dataset.appCloudUpdate === "1") {
       localStorage.setItem(`${ANNOUNCEMENT_STORAGE_KEY}_app_${version}`, version);
     }
-    modal.hidden = true;
+    if (window.IELTSIOS) window.IELTSIOS.closeSheet(modal); else modal.hidden = true;
   }
 
   function renderReadingTest(id) {
@@ -2828,6 +2903,14 @@
         return;
       }
       const isRegister = state.account.formMode !== "login";
+      if ($("#account-email") && !$("#account-email").validity.valid) {
+        toast("请填写有效的邮箱地址");
+        return;
+      }
+      if (isRegister && password.length < 6) {
+        toast("密码至少需要 6 位");
+        return;
+      }
       if (state.account.registerStorage === "cloud") {
         const settingsUrl = $("#supabase-url-settings");
         const settingsKey = $("#supabase-anon-key-settings");
@@ -2956,6 +3039,7 @@
       return;
     }
     if (action === "ai-send") {
+      if (state.ai.thinking) return;
       const input = $("#ai-input");
       if (input) {
         const value = input.value;
@@ -2998,7 +3082,7 @@
       const scenario = AI_SCENARIOS[state.ai.scenario];
       const step = scenario ? scenario.steps[Math.min(state.ai.stepIndex, scenario.steps.length - 1)] : null;
       state.ai.messages.push({ role: "ai", text: step ? step.ai : AI_FREE_PROMPTS[0], feedback: step ? `提示：${step.hint}` : "试着用完整句子回答。 " });
-      render();
+      renderAiUpdate();
       return;
     }
     if (action === "ai-speak") {
@@ -3366,6 +3450,10 @@
 
     const scoreEl = $("#live-score");
     if (scoreEl) scoreEl.innerHTML = `得分 <strong>${correct}</strong> / ${total} · ${score}%`;
+    if (window.IELTSMotion) {
+      if(scoreEl)window.IELTSMotion.revealState(scoreEl);
+      $$(".q-feedback").forEach(el=>window.IELTSMotion.revealState(el));
+    }
     renderTarget();
     toast(total ? `核对完成：${correct}/${total} 题正确` : "没有可核对的答案");
     return { correct, total, score };
@@ -3521,6 +3609,7 @@
     $("#view-root").addEventListener("keydown", (e) => {
       if (e.target.id === "ai-input" && e.key === "Enter") {
         e.preventDefault();
+        if (state.ai.thinking) return;
         const input = $("#ai-input");
         const value = input.value;
         input.value = "";
@@ -3606,8 +3695,12 @@
     $("#target-plus").addEventListener("click", () => setTarget(0.5));
     $("#reset-progress").addEventListener("click", () => {
       if (confirm("确定清空本机学习记录吗？此操作无法撤销。")) {
-        localStorage.removeItem(STORAGE_KEY);
         state.progress = defaultProgress();
+        if (state.account.user) {
+          state.progress.profile.email = state.account.user.email || "";
+          state.progress.profile.displayName = state.account.user.name || "";
+        }
+        save();
         renderTarget();
         render();
         toast("学习记录已清空");
@@ -3628,6 +3721,7 @@
   }
 
   function init() {
+    window.addEventListener("ielts:theme-change", event => { state.settings.theme = event.detail.preference; });
     loadAiSettings();
     loadTtsSettings();
     loadUserSettings();
@@ -3647,7 +3741,8 @@
     }
     renderTarget();
     render();
-    showUpdateAnnouncement();
+    if (window.IELTS_FIRST_VISIT) window.addEventListener("ielts:welcome-complete", showUpdateAnnouncement, {once:true});
+    else showUpdateAnnouncement();
   }
 
   init();

@@ -1,0 +1,11 @@
+{
+  "developmentFocus": "web-and-app-release",
+  "nativeUpdates": "enabled",
+  "nativePlatforms": ["windows", "android"],
+  "pausedPlatforms": ["macos", "linux", "ios"],
+  "cloudUpdates": "paused",
+  "resumedAt": "2026-10-16",
+  "pausedAt": "2026-10-15",
+  "resumeRequires": "explicit-user-request",
+  "reason": "用户明确要求打包发布 Windows 和 Android；仅恢复这两种安装包，其他平台与全局旧 App 云跳转通知保持暂停。"
+}

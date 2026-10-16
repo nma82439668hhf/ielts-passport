@@ -5,10 +5,14 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const mobileRoot = path.resolve(here, "..");
 const repoRoot = path.resolve(mobileRoot, "..", "..");
-const sourceSite = path.join(repoRoot, "site", "index.html");
-const source = fs.existsSync(sourceSite) ? path.join(repoRoot, "site") : repoRoot;
+const source = [path.join(repoRoot, "source", "site"), path.join(repoRoot, "site"), repoRoot]
+  .find((candidate) => fs.existsSync(path.join(candidate, "index.html")));
+if (!source) throw new Error(`Website index.html not found under ${repoRoot}`);
 const target = path.join(mobileRoot, "www");
 
+if (path.dirname(target) !== mobileRoot || path.basename(target) !== "www") {
+  throw new Error("Unexpected mobile web target");
+}
 fs.rmSync(target, { recursive: true, force: true });
 
 const skip = new Set(["apps", "node_modules", "dist", "www", "android", "ios", ".git"]);

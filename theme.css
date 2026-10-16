@@ -1,0 +1,233 @@
+/* Shared roles keep the daytime workspace and its nighttime counterpart in sync. */
+:root {
+  color-scheme: light;
+  --surface: #ffffff;
+  --rail: #f0f3ed;
+  --surface-hover: #e9eee5;
+  --surface-selected: #dde7d8;
+  --selected-ink: #244e36;
+  --task-surface: #eaf0e4;
+  --task-ink: #4d614b;
+  --preview-surface: #fcfdf8;
+  --summary-surface: #f2f3ee;
+  --accent-soft: #e9efe4;
+  --accent-ink: #35553c;
+  --action-hover: #204b38;
+  --on-action: #ffffff;
+  --control-line: #87927f;
+  --track: #dce3d7;
+  --bar-fill: #537c58;
+  --success-surface: #e7efe4;
+  --success-ink: #285538;
+  --error-surface: #f9eae5;
+  --error-ink: #913e30;
+  --warning-surface: #f3eddf;
+  --warning-ink: #795c26;
+  --overlay: #18231d66;
+  --welcome-surface: #f5f7f1;
+  --toast-surface: #202923;
+  --toast-ink: #ffffff;
+  --skeleton: #dce5d6;
+  --skeleton-highlight: #ffffff9e;
+  --switch-knob: #ffffff;
+  --selection: #d9e8d8;
+  --selection-ink: #173f2c;
+  --scrollbar: #879580;
+  --image-outline: #0000001a;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #151b18;
+  --paper-2: #1d2720;
+  --paper-3: #2a382d;
+  --surface: #202a23;
+  --rail: #19231d;
+  --surface-hover: #2b3a2e;
+  --surface-selected: #344b38;
+  --selected-ink: #d9ecd5;
+  --ink: #e5ebe3;
+  --ink-soft: #c0ccbe;
+  --muted: #a6b5a3;
+  --line: #3d4b3e;
+  --teal: #a3c9a8;
+  --teal-deep: #c4dfc4;
+  --brand-teal: var(--teal);
+  --brand-blue: var(--teal);
+  --brand-deep: var(--teal-deep);
+  --red: #e6a496;
+  --red-deep: #f0b7a9;
+  --gold: #d5bb86;
+  --gold-soft: #393222;
+  --task-surface: #2b3a2b;
+  --task-ink: #c0d2b8;
+  --preview-surface: #344632;
+  --summary-surface: #202a23;
+  --accent-soft: #30412f;
+  --accent-ink: #c0d8b8;
+  --action-hover: #bdd9bd;
+  --on-action: #17291b;
+  --control-line: #71846e;
+  --track: #3b4c3a;
+  --bar-fill: #9bbc91;
+  --success-surface: #2c402e;
+  --success-ink: #c3dfb9;
+  --error-surface: #452e2a;
+  --error-ink: #f0b7a9;
+  --warning-surface: #3d3525;
+  --warning-ink: #e2c88f;
+  --overlay: #070c09b3;
+  --welcome-surface: #19231c;
+  --toast-surface: #dce8d7;
+  --toast-ink: #1b2a1e;
+  --skeleton: #45583f;
+  --skeleton-highlight: #c4dbb629;
+  --switch-knob: #d2dec9;
+  --selection: #54724d;
+  --selection-ink: #ffffff;
+  --scrollbar: #71846b;
+  --image-outline: #ffffff1a;
+  --shadow-sm: none;
+  --shadow-lg: 0 14px 42px #00000059;
+  --glass-border: var(--line);
+  --glass-shadow: none;
+}
+
+html { background: var(--paper); scrollbar-color: var(--scrollbar) var(--paper); }
+::selection { background: var(--selection); color: var(--selection-ink); }
+:root[data-theme] body { background: var(--paper); color: var(--ink); }
+:root[data-theme] :is(button, input, select, textarea) { accent-color: var(--teal); }
+:root[data-theme] :is(input, textarea)::placeholder { color: var(--muted); opacity: 1; }
+:root[data-theme] :is(button, a, [role="button"], input, select, textarea):focus-visible { outline-color: var(--teal); }
+
+/* Chrome and navigation. The fixed bars use the same canvas as the page. */
+:root[data-theme] .sidebar { background: var(--rail); }
+:root[data-theme] :is(.topbar, .topbar.is-compact, .mobile-bottom-nav) { background: var(--paper); }
+:root[data-theme="dark"] .topbar.is-compact { box-shadow: 0 5px 18px #00000033; }
+:root[data-theme] .nav-item { color: var(--ink-soft); }
+:root[data-theme] .nav-item:hover { background: var(--surface-hover); color: var(--ink); }
+:root[data-theme] .nav-item.is-active { background: var(--surface-selected); color: var(--selected-ink); }
+:root[data-theme] :is(.target-control button, .install-btn, .shell-profile > span, .shell-avatar) { background: var(--accent-soft); color: var(--ink); }
+:root[data-theme] .lookup-toggle.is-active { background: var(--accent-soft); color: var(--teal); }
+:root[data-theme] .brand-mark { background: var(--teal); color: var(--on-action); }
+:root[data-theme] .skip-link { background: var(--toast-surface); color: var(--toast-ink); }
+.topbar-title h1 { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+.theme-toggle {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px 11px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background-color 150ms, color 150ms;
+}
+.theme-toggle:hover { background: var(--surface-hover); color: var(--ink); }
+.theme-toggle-icons { display: grid; width: 18px; height: 18px; flex: 0 0 18px; }
+.theme-toggle-icons > * { grid-area: 1 / 1; width: 18px; height: 18px; stroke-width: 1.7; transition: opacity 180ms; }
+.theme-toggle-icons svg { display: block; width: 18px; height: 18px; stroke-width: 1.7; }
+.theme-icon-sun { opacity: 1; }
+.theme-icon-moon { opacity: 0; }
+:root[data-theme="dark"] .theme-icon-sun { opacity: 0; }
+:root[data-theme="dark"] .theme-icon-moon { opacity: 1; }
+#theme-preference { min-height: 44px; border-radius: 6px; }
+#theme-status { color: var(--muted); font-size: 12px; line-height: 1.6; }
+
+/* Learning workspace and progress. */
+:root[data-theme] .primary-task { background: var(--task-surface); }
+:root[data-theme] :is(.primary-task p, .task-context) { color: var(--task-ink); }
+:root[data-theme] .task-preview { background: var(--preview-surface); }
+:root[data-theme] .study-summary { background: var(--summary-surface); }
+:root[data-theme] :is(.word-sequence span, .progress-track, .skill-column-track, .bar, .bar.gold, .bar.teal, .bar.red) { background: var(--track); }
+:root[data-theme] :is(.word-sequence span.done, .progress-track span, .skill-column-bar, .bar span, .bar.gold span, .bar.teal span, .bar.red span) { background: var(--bar-fill); }
+:root[data-theme] .summary-skills { border-color: var(--line); }
+
+/* Solid surfaces replace the inherited light-only fills across all study tools. */
+:root[data-theme] :is(.panel, .stat-card, .module-card, .test-card, .video-card, .library-card, .speaking-card, .about-card, .account-card, .account-cloud, .admin-panel, .setting-card, .settings-card, .setting-group, .question, .exam-start, .exam-hero, .challenge-card, .ai-chat-card, .ai-settings-card, .speech-card, .review-item, .review-stat, .download-card) {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--line);
+  box-shadow: none;
+}
+:root[data-theme] :is(.module-card, .test-card, .library-card, .challenge-card, .download-card):hover { background: var(--surface-hover); border-color: var(--control-line); box-shadow: none; }
+:root[data-theme] .app-download-section > summary { background: var(--surface); color: var(--ink); border-color: var(--line); border-radius: 12px; box-shadow: none; backdrop-filter: none; }
+:root[data-theme] .download-card { border-radius: 12px; backdrop-filter: none; }
+:root[data-theme] :is(.task, .audio-block, .task-figure, .transcript, .model-answer, .library-prompt) { background: var(--paper-2); color: var(--ink-soft); border-color: var(--line); }
+:root[data-theme] .task:hover { border-color: var(--control-line); }
+:root[data-theme] :is(.test-icon, .task-icon, .module-card .module-num, .review-no, .player-level, .download-icon) { background: var(--accent-soft); color: var(--accent-ink); box-shadow: none; }
+:root[data-theme] :is(.exam-hero h2, .exam-hero h3, .exam-hero p, .exam-hero span) { color: var(--ink); }
+:root[data-theme] .score-orb { background: var(--accent-soft); color: var(--ink); box-shadow: none; }
+:root[data-theme] .score-orb :is(strong, span, small) { color: inherit; }
+:root[data-theme] :is(.btn, .btn.primary, .btn.teal, .study-panel-toggle) { background: var(--teal); border-color: var(--teal); color: var(--on-action); box-shadow: none; }
+:root[data-theme] :is(.btn, .btn.primary, .btn.teal, .study-panel-toggle):hover { background: var(--action-hover); border-color: var(--action-hover); color: var(--on-action); }
+:root[data-theme] :is(.btn.ghost, .back-btn) { background: transparent; border-color: var(--control-line); color: var(--ink); }
+:root[data-theme] :is(.btn.ghost, .back-btn):hover { background: var(--surface-hover); color: var(--ink); }
+:root[data-theme] .tag { background: var(--accent-soft); color: var(--accent-ink); }
+:root[data-theme] .tag.teal { background: var(--success-surface); color: var(--success-ink); }
+:root[data-theme] .tag.red { background: var(--error-surface); color: var(--error-ink); }
+:root[data-theme] .tag.gold { background: var(--warning-surface); color: var(--warning-ink); }
+:root[data-theme] .seg { background: var(--paper-3); box-shadow: none; }
+:root[data-theme] .seg button { color: var(--ink-soft); }
+:root[data-theme] :is(.seg, .section-tabs) button.is-active { background: var(--surface); border-color: var(--line); color: var(--teal); box-shadow: none; }
+:root[data-theme] .section-tabs button { background: var(--paper-2); border-color: var(--line); color: var(--ink-soft); }
+:root[data-theme] .motion-tabs button.is-active { background: transparent; color: var(--teal); }
+:root[data-theme] .flash-card { background: var(--paper-2); border-color: var(--line); box-shadow: none; }
+:root[data-theme] .flash-face { background: var(--paper-2); border-color: var(--line); }
+:root[data-theme] .flash-face.back { background: var(--accent-soft); }
+
+/* Fields and answer semantics stay legible independently of the selected theme. */
+:root[data-theme] :is(input:not([type="range"]):not([type="checkbox"]):not([type="radio"]), select, textarea) { background: var(--surface); color: var(--ink); border-color: var(--control-line); caret-color: var(--teal); }
+:root[data-theme] .q-options button { background: var(--surface); color: var(--ink); border-color: var(--control-line); }
+:root[data-theme] .q-options button:hover { background: var(--surface-hover); }
+:root[data-theme] .q-options button.selected { background: var(--surface-selected); color: var(--selected-ink); border-color: var(--teal); }
+:root[data-theme] :is(.q-options button.correct, .q-input.correct, .q-feedback-slot.ok) { background: var(--success-surface); color: var(--success-ink); border-color: var(--success-ink); }
+:root[data-theme] :is(.q-options button.wrong, .q-input.wrong, .q-feedback-slot.no) { background: var(--error-surface); color: var(--error-ink); border-color: var(--error-ink); }
+:root[data-theme] .q-feedback-slot.inline { background: transparent; }
+:root[data-theme] :is(.q-feedback.ok, .lookup-word:hover) { color: var(--success-ink); }
+:root[data-theme] .q-feedback.no { color: var(--error-ink); }
+:root[data-theme] .lookup-word:hover { background: var(--accent-soft); }
+:root[data-theme] .lookup-word { border-bottom-color: var(--control-line); }
+:root[data-theme] :is(.ai-warning, .audio-fallback) { background: var(--warning-surface); color: var(--warning-ink); border-color: var(--warning-ink); }
+:root[data-theme] :is(.source-table th, .account-stats > div) { background: var(--paper-2); color: var(--ink); }
+:root[data-theme] .source-table :is(td, th) { border-color: var(--line); }
+:root[data-theme] .switch { border-color: var(--control-line); }
+:root[data-theme] .switch::after { background: var(--switch-knob); }
+:root[data-theme] .switch.on::after { background: var(--on-action); }
+
+/* Conversation, lookup, overlays and first visit share the same surface hierarchy. */
+:root[data-theme] .ai-scenario { background: var(--paper-2); color: var(--ink); }
+:root[data-theme] .ai-scenario:hover { background: var(--surface-hover); }
+:root[data-theme] .ai-scenario.is-active { background: var(--surface-selected); border-color: var(--control-line); }
+:root[data-theme] .ai-scenario.is-active span { color: var(--ink-soft); }
+:root[data-theme] .ai-bubble { background: var(--paper-2); color: var(--ink); }
+:root[data-theme] .ai-message.user .ai-bubble { background: var(--accent-soft); color: var(--ink); }
+:root[data-theme] .ai-chat-head { background: var(--surface); border-color: var(--line); }
+:root[data-theme] :is(.ai-avatar, .ai-mic, .ai-speak) { background: var(--accent-soft); color: var(--teal); border-color: var(--line); }
+:root[data-theme] .ai-message.user .ai-avatar { background: var(--error-surface); color: var(--error-ink); }
+:root[data-theme] .ai-mic.is-listening { background: var(--error-surface); color: var(--error-ink); }
+:root[data-theme] :is(.ai-feedback, .ai-message.user .ai-feedback) { color: var(--ink-soft); }
+:root[data-theme] :is(.account-warning, .account-avatar) { background: var(--accent-soft); color: var(--accent-ink); }
+:root[data-theme] :is(.social-btn.wechat, .social-btn.qq) { background: var(--surface); color: var(--ink); border-color: var(--control-line); }
+:root[data-theme] .social-btn > span { background: var(--accent-soft); color: var(--accent-ink); }
+:root[data-theme] .social-btn:hover { background: var(--surface-hover); }
+:root[data-theme] :is(.word-popover, .compat-audio-bar) { background: var(--surface); color: var(--ink); border-color: var(--line); box-shadow: var(--shadow-lg); }
+:root[data-theme] :is(.support-modal, .announcement-modal, .sidebar-open .scrim) { background: var(--overlay); }
+:root[data-theme] :is(.support-modal-card, .announcement-card, .study-panel) { background: var(--surface); color: var(--ink); }
+:root[data-theme] :is(.support-close, .announcement-close, .pop-close) { background: var(--paper-3); color: var(--ink-soft); }
+:root[data-theme] .welcome-screen { background: var(--welcome-surface); color: var(--ink); }
+:root[data-theme] .toast { background: var(--toast-surface); color: var(--toast-ink); }
+:root[data-theme] .skeleton-line { background: var(--skeleton); }
+:root[data-theme] .skeleton-line::after { background: linear-gradient(100deg, transparent 0%, var(--skeleton-highlight) 48%, transparent 100%); }
+:root[data-theme] :is(.support-modal-card img, .task-figure img) { outline: 1px solid var(--image-outline); }
+
+@media (max-width: 1200px) { .theme-toggle-label { display: none; } .theme-toggle { padding: 8px; } }
+@media (max-width: 760px) { .topbar-actions .desktop-support { display: none; } }
+@media (prefers-reduced-motion: reduce) { .theme-toggle, .theme-toggle-icons > * { transition: none; } }

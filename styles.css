@@ -923,6 +923,8 @@ button {
 
 .seg {
   display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
   padding: 3px;
   background: var(--paper-3);
   border-radius: 8px;
@@ -4212,7 +4214,7 @@ body {
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 1020px) {
   .mobile-bottom-nav {
     position: fixed;
     left: 10px;
