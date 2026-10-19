@@ -84,7 +84,7 @@ python -m http.server 8080
 - 站点统一云端配置：把同一组 `url` 和 `anonKey` 写入 `data/cloud-config.js`。这样任何浏览器打开网站都会自动使用同一个云端服务，不会出现“一个浏览器注册、另一个浏览器看不到配置”的问题。
 - App 版本：站点包含 `manifest.webmanifest` 和 `sw.js`，是完整 PWA。手机 Chrome/Edge 或桌面浏览器可通过“安装 App 版本”或“添加到主屏幕”安装为独立应用。
 - 离线能力：核心页面、题库和词典分片会缓存；音频和词典分片按需缓存，避免首次下载过大。
-- 默认开启登录门禁：未登录时只能访问登录/注册页和来源页，其他学习功能会被锁定。
+- 默认直接进入学习工作台；管理员可开启登录门禁，开启后仅登录/注册页和来源页允许未登录访问。
 - 管理员邮箱：`nma82438@gmail.com`。该邮箱登录后会显示管理员面板，可控制是否要求登录、是否允许注册，并导出本机邮箱账户列表。
 - 微信 / QQ 登录：登录页提供微信和 QQ 按钮；管理员面板填写 AppID 和 OAuth Worker 地址，Worker 模板位于 `apps/oauth-worker`，AppSecret 只保存在 Cloudflare 环境变量中。
 
@@ -110,7 +110,8 @@ window.IELTS_CLOUD_CONFIG = {
 - Electron 桌面版和 Capacitor Android/iOS 内置离线网页包；启动后检查云端 `data/remote-version.js`。
 - 如果云端版本更高，App 自动切换到 GitHub Pages 最新版；离线或网络失败时继续使用内置版本。
 - App 账户页提供“检查 App 云端更新”按钮。
-- 历史多端发版命令为 `node scripts/set-version.js 1.0.2`。当前暂停期间仅提升网页版本，不触发桌面、Android、iOS 工作流；现有 Release 安装包保留。
+- 当前 v1.2.1 仅发布 Windows、Android；工作流手动接收固定 `source_ref`，构建后需校验并上传 Release。macOS、Linux、iOS 保持 v1.2.0；`cloudUpdates` 暂停，全局云跳转标记保持 1.2.0。
+- [v1.2.1 下载与安装说明](https://github.com/nma82439668hhf/ielts-passport/releases/tag/v1.2.1)：Windows 未签名；Android 为调试签名 APK，与 v1.2.0 证书不同，旧版用户须先导出学习进度，再卸载旧版并安装导入。
 
 AI 对话页默认使用内置陪练，不需要 API Key。需要更强对话能力时，可以在页面右侧填写 OpenAI 兼容 API 的 Base URL、模型名和 Key；Key 只保存在当前浏览器 localStorage。
 
