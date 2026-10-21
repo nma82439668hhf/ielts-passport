@@ -2,7 +2,9 @@
 
 作者：Vega。未经允许禁止用于一切商业用途。
 
-## 当前网页版本1.2.2（2026-10-21）
+## 当前网页版本1.2.3（2026-10-21）
+
+1.2.3修复浏览器旧缓存导致刷新后仍读取旧脚本的问题。需要时打开update.html更新页面，学习记录保留。
 
 - 在线学习：https://nma82439668hhf.github.io/ielts-passport/
 - 产品体验：https://nma82439668hhf.github.io/ielts-passport/experience.html

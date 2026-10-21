@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ielts-passport-responsive-web-v4';
+const CACHE_NAME = 'ielts-passport-responsive-web-v5';
 const APP_SHELL = [
  './','./index.html','./experience.html','./experience.css','./experience.js','./experience-word.js',
  './styles.css','./design.css','./motion.css','./study-panel.css','./theme.css','./theme.js','./ios.css','./ios.js',
@@ -10,7 +10,7 @@ const APP_SHELL = [
 const BANK_FILES=['A1','A2','B1','B2','C1'].map(level=>'./data/vocab/'+level+'.js').concat(
  ['vocab-quiz','staged','library','grammar','reading','listening','writing','speaking'].map(name=>'./data/'+name+'.js')
 );
-self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE_NAME).then(cache=>cache.addAll(APP_SHELL)).then(()=>self.skipWaiting())));
+self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE_NAME).then(cache=>cache.addAll(APP_SHELL.map(file=>new Request(file,{cache:'reload'})))).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil((async()=>{
  const cache=await caches.open(CACHE_NAME),oldKeys=(await caches.keys()).filter(key=>key.startsWith('ielts-passport-')&&key!==CACHE_NAME);
  for(const key of oldKeys){
@@ -62,7 +62,7 @@ self.addEventListener('fetch',event=>{
  const url=new URL(request.url);if(url.origin!==self.location.origin)return;
  const networkFirst=request.mode==='navigate'||/(?:experience(?:-word)?\.(?:html|css|js)|app\.js|bank-loader\.js|offline\.js|lucide-study\.js|styles\.css|design\.css|motion\.(?:css|js)|theme\.(?:css|js)|ios\.(?:css|js)|study-panel\.(?:css|js)|shell\.js|welcome-bootstrap\.js|index\.html|manifest\.webmanifest|sw\.js|version\.json|data\/(?:vocab-index|cloud-config|changelog|version|remote-version)\.js)$/.test(url.pathname);
  if(networkFirst){
-  event.respondWith(fetch(request).then(async response=>{if(response.ok){const cache=await caches.open(CACHE_NAME);await cache.put(request,response.clone());}return response;}).catch(async()=>await caches.match(request)||(request.mode==='navigate'?await caches.match('./index.html'):Response.error())));return;
+  event.respondWith(fetch(new Request(request,{cache:'no-cache'})).then(async response=>{if(response.ok){const cache=await caches.open(CACHE_NAME);await cache.put(request,response.clone());}return response;}).catch(async()=>await caches.match(request)||(request.mode==='navigate'?await caches.match('./index.html'):Response.error())));return;
  }
  event.respondWith((async()=>{
   const cached=await caches.match(request);
