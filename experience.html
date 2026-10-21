@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="description" content="让同一个 book，从第一次遇见，走到理解、巩固与下次复习。体验 IELTS Passport 的学习闭环。">
+  <meta name="theme-color" content="#f2f2f7">
+  <meta name="author" content="Vega">
+  <title>IELTS Passport · 产品体验：一个词的学习旅程</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <script src="theme.js"></script>
+  <link rel="stylesheet" href="experience.css">
+  <script src="experience-word.js" defer></script>
+  <script src="experience.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#experience-main">跳到体验内容</a>
+  <header class="experience-nav">
+    <a class="wordmark" href="index.html#home" aria-label="IELTS Passport 学习首页">IELTS Passport</a>
+    <nav aria-label="产品体验导航">
+      <a class="chapter-link" href="#understand">学习方式</a>
+      <a class="chapter-link" href="#try">试学一个词</a>
+      <button id="theme-toggle" class="theme-button" type="button" aria-label="切换外观"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9 9 9 0 0 1-9-9Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></button>
+      <a class="action small" href="index.html#vocab?level=A1&amp;unit=6">开始学习</a>
+    </nav>
+  </header>
+  <main id="experience-main">
+    <section id="journey" class="word-story" aria-labelledby="hero-title">
+      <div class="story-grid wrap">
+        <header class="hero-copy" data-story-point="0">
+          <h1 id="hero-title"><span class="line"><span>一次认识，</span></span><span class="line"><span>下次记得。</span></span></h1>
+          <p class="hero-description">从一个词开始，把理解、练习和复习，连成每天的英语学习。</p>
+          <div class="hero-actions"><a class="action hero-action" href="index.html#vocab?level=A1&amp;unit=6">开始学词<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12h14m-5-5 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></a><a class="text-link" href="#try">先试学一个词</a></div>
+          <p class="hero-note">现在，先认识 <span lang="en">book</span>。A1 真实词库中的一个词。</p>
+        </header>
+        <figure class="word-stage" data-phase="0" aria-label="book 的学习过程演示">
+          <div class="word-visual" data-ui aria-hidden="true">
+            <div class="stage-top"><span>IELTS Passport</span><span>A1 · Unit 6</span></div>
+            <div class="stage-face" data-face="0">
+              <p class="stage-label">遇见一个词</p>
+              <div class="word-slot"><span id="thread-word" lang="en">book</span></div>
+              <p class="phonetic" lang="en">/buk/</p>
+              <p class="stage-hint">先想一想，它是什么意思？</p>
+            </div>
+            <div class="stage-face" data-face="1" hidden>
+              <p class="stage-label">让词义变清楚</p><div class="word-slot"></div>
+              <p class="stage-meaning">书；书籍</p><p class="stage-hint">这里，认识它的名词义。</p>
+            </div>
+            <div class="stage-face" data-face="2" hidden>
+              <p class="stage-label">把它放进一句话</p>
+              <div class="stage-sentence" lang="en"><span>That's Tom's</span> <span class="word-slot"></span><span>.</span></div>
+              <p class="stage-meaning">那是汤姆的书。</p><p class="stage-hint">语境让“书”的意思更明确。</p>
+            </div>
+            <div class="stage-face" data-face="3" hidden>
+              <p class="stage-label">用一道题，确认理解</p><div class="word-slot"></div>
+              <p class="stage-question">在刚才的句子里，它指什么？</p>
+              <div class="visual-answer"><svg viewBox="0 0 24 24" width="20" height="20"><path d="m5 12 4 4 10-10" fill="none" stroke="currentColor" stroke-width="2"/></svg>一本书<span>回答正确 · 示例</span></div>
+            </div>
+            <div class="stage-face" data-face="4" hidden>
+              <p class="stage-label">下次，还会遇见它</p>
+              <div class="review-object"><div class="word-slot"></div><span>次日复习</span></div>
+              <div class="review-intervals"><span>1 天</span><span>3 天</span><span>7 天</span><span>14 天</span></div>
+              <p class="stage-hint">同日重复不跳级。这里是机制演示。</p>
+            </div>
+          </div>
+          <figcaption><span id="story-caption">同一个 book，从这里出发。</span><span class="stage-progress" aria-hidden="true"><i class="is-current"></i><i></i><i></i><i></i><i></i></span></figcaption>
+          <div class="mobile-story-controls" hidden><button id="story-previous" class="quiet-button" type="button" disabled>上一步</button><p id="mobile-story-status" role="status" aria-live="polite">遇见 book</p><button id="story-next" class="quiet-button" type="button">看词义</button></div>
+        </figure>
+        <article id="understand" class="journey-step" data-story-point="1">
+          <h2>先认识，<br>再理解。</h2><p><span lang="en">book</span> 有不止一种意思。在这里，先理解“书；书籍”这个名词义，不急着背完所有解释。</p>
+          <details class="inline-definition"><summary>看看 book 的词义</summary><p><span lang="en">book /buk/</span>：书；书籍。这个例子取自现有 A1 词库。</p></details>
+        </article>
+        <article id="apply" class="journey-step" data-story-point="2">
+          <h2>一个词，<br>走进一句话。</h2><p class="story-example" lang="en">That's Tom's <strong>book</strong>.</p><p>那是汤姆的书。把刚认识的词放回语境里，知道它在这句话中表达什么。</p>
+        </article>
+        <article id="consolidate" class="journey-step" data-story-point="3">
+          <h2>学过了，<br>再试一题。</h2><p>在这句话里，<span lang="en">book</span> 指的是一本书。答对时确认理解；答错或没答时，仍能查看答案和解释。</p><a class="text-link" href="#try">亲自试一题</a><p class="small-note">正式学习是 20 词一单元，学完后用同组 5 题巩固。</p>
+        </article>
+        <article id="remember" class="journey-step" data-story-point="4">
+          <h2>这次认识，<br>下次再见。</h2><p>标记“认识了”或“还不熟”后，单词从次日开始复习。逐步掌握，再延长到 3、7、14 天；同一天重复不跳级。</p><p class="small-note">这里说明已有机制。试玩不会为你创建复习安排。</p><a class="text-link" href="index.html#vocab?mode=review">打开到期词汇复习</a>
+        </article>
+      </div>
+    </section>
+
+    <section id="try" class="try-section chapter" aria-labelledby="try-title">
+      <div class="wrap try-layout">
+        <div class="try-copy"><h2 id="try-title" data-reveal>现在，<br>轮到你了。</h2><p>还是这个 <span lang="en">book</span>。看懂词义，再回答一道题，完成一次小小的学习。</p><p class="small-note">仅供试玩，不保存进度、XP、错题或账户信息。刷新后从头开始。</p><a class="text-link" href="index.html#vocab?level=A1&amp;unit=6">随时进入正式单元</a></div>
+        <div class="word-demo" data-ui>
+          <p class="demo-level">A1 · 词汇试玩</p><p class="demo-word" id="demo-word" lang="en">book</p>
+          <details id="demo-definition"><summary>查看词义和例句</summary><div><p id="demo-meaning">书；书籍</p><p id="demo-example" lang="en">That's Tom's book.</p><p class="example-translation">那是汤姆的书。</p><button class="action" id="start-quiz" type="button" hidden>我理解了，试一题</button></div></details>
+          <section id="demo-question" aria-labelledby="demo-question-title" hidden>
+            <h3 id="demo-question-title" tabindex="-1">这里的 book 指什么？</h3><p lang="en">That's Tom's book.</p>
+            <div class="demo-options" role="group" aria-label="选择一个词义"><button type="button" data-answer="0" aria-pressed="false">一本书</button><button type="button" data-answer="1" aria-pressed="false">一把椅子</button><button type="button" data-answer="2" aria-pressed="false">一个苹果</button></div>
+          </section>
+          <section id="demo-result" hidden><p id="demo-feedback" role="status" aria-live="polite" aria-atomic="true"></p><details id="demo-explanation" open><summary>查看解释</summary><p>book 在这句话中是名词，表示“书”。整句是“那是汤姆的书”。其他选项分别是 chair 和 apple。</p></details><div class="demo-result-actions"><button class="quiet-button" id="retry-quiz" type="button">再答一次</button><a class="action" href="index.html#vocab?level=A1&amp;unit=6">进入 book 所在单元</a><button class="text-button" id="restart-demo" type="button">从头试玩</button></div></section>
+          <noscript><details><summary>看一道例题与答案</summary><p>在 That's Tom's book. 中，book 指的是“一本书”。它在这里是名词，不是动词“预订”。</p></details></noscript>
+        </div>
+      </div>
+    </section>
+
+    <section class="product-proof chapter" aria-labelledby="proof-title"><div class="wrap">
+      <div class="proof-heading"><h2 id="proof-title" data-reveal>把这一步，<br>接到每天。</h2><p>词汇只是起点。回到真实工作台，继续阅读、练习和开口表达。</p></div>
+      <figure class="home-proof" data-reveal data-ui><picture><source srcset="assets/experience/home-dark.png" media="(prefers-color-scheme:dark)" data-dark-source><img src="assets/experience/home-light.png" width="1440" height="900" loading="lazy" alt="真实学习概览，显示今日任务与练习进度；记录为示例。"></picture><figcaption>每日学习直接开始；产品体验始终是自愿入口。<a class="text-link" href="index.html#home">打开学习首页</a></figcaption></figure>
+      <div class="proof-pair"><article><figure data-reveal data-ui><img src="assets/experience/complete.png" width="390" height="667" loading="lazy" alt="真实20词完成页，提供同组5题巩固和下一单元；记录为示例。"></figure><h3>20 个词之后，试 5 题。</h3><p>同一个单元里的词，接着在题目中巩固。未答与错题保留解释，练习表现不换算官方雅思成绩。</p><a class="text-link" href="index.html#vocab?level=A1&amp;unit=6">打开分级词汇</a></article><article><figure data-reveal data-ui><img src="assets/experience/ai.png" width="390" height="667" loading="lazy" alt="真实内置场景英语陪练，含输入框和可收起的话题。"></figure><h3>从熟悉的话题，开口说。</h3><p>内置场景无需在线模型配置。需要更自由的对话时，可以自行连接模型服务。</p><a class="text-link" href="index.html#ai">打开英语陪练</a></article></div>
+      <figure class="reading-proof" data-reveal data-ui><img src="assets/experience/reading.png" width="1440" height="900" loading="lazy" alt="真实阅读界面，文章与题目并列，支持答案和未答解释；记录为示例。"><figcaption>在文章里理解单词，按需查看答案解析。<a class="text-link" href="index.html#practice?skill=reading&amp;level=A1">打开阅读练习</a></figcaption></figure>
+      <p class="proof-note">以上为真实产品界面，学习记录为演示示例。</p>
+    </div></section>
+    <section class="closing chapter" aria-labelledby="closing-title"><div class="wrap"><h2 id="closing-title" data-reveal>带着 book，<br>开始这一组。</h2><p>刚才的词，来自 A1 第 6 单元。接着认识同组的词，再做 5 题巩固。</p><a class="action" href="index.html#vocab?level=A1&amp;unit=6">开始第 6 单元</a><a class="closing-top" href="#hero-title">回到顶部</a></div></section>
+  </main>
+  <footer class="wrap"><a class="wordmark" href="index.html#home">IELTS Passport</a><p>Vega · 未经允许禁止用于一切商业用途</p><a href="index.html#about">题库来源与许可</a></footer>
+</body>
+</html>

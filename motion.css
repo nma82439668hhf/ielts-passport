@@ -3,6 +3,16 @@ body{-webkit-font-smoothing:antialiased}
 .view{position:relative;isolation:isolate}
 .motion-ghost{position:absolute;inset:34px 44px auto;max-width:calc(100% - 88px);z-index:4;pointer-events:none;user-select:none;overflow:hidden}
 .motion-ghost *{pointer-events:none!important;animation:none!important}
+.motion-capsule{position:fixed;inset:0;z-index:900;overflow:hidden;isolation:isolate;pointer-events:none;user-select:none;contain:strict;background:transparent}
+.motion-capsule,.motion-capsule *{pointer-events:none!important}
+.motion-capsule-scene,.motion-capsule-surface{position:absolute;inset:0;overflow:hidden;background:var(--paper);pointer-events:none}
+.motion-capsule-scene *{animation:none!important;transition:none!important;caret-color:transparent!important}
+.motion-capsule-outgoing{z-index:0}
+.motion-capsule-surface{z-index:1;background:var(--surface)}
+.motion-capsule-incoming{z-index:0}
+.motion-capsule-seed{z-index:1;overflow:hidden;pointer-events:none!important;transition:none!important;animation:none!important}
+.view.motion-reduced-reveal{animation:motion-soft-reveal 120ms ease-out!important}
+@keyframes motion-soft-reveal{from{opacity:.9}to{opacity:1}}
 .motion-tabs{position:relative;isolation:isolate;padding-bottom:5px}
 .motion-tabs button{position:relative;z-index:1}
 .motion-tabs button.is-active{background:transparent;color:var(--teal)}
@@ -42,4 +52,4 @@ html.welcome-pending .skeleton-line::after,.page-hidden .skeleton-line::after,.m
 @media(max-width:1020px){.study-panel-trigger{min-width:44px;height:44px;padding:0;justify-content:center}.study-panel-trigger span{display:none}.topbar{z-index:110}.skill-chart{gap:10px}.scroll-context{left:54px}}
 @media(max-width:760px){.motion-ghost{inset:25px 20px auto;max-width:calc(100% - 40px)}.study-summary{grid-template-columns:1fr 1.3fr;column-gap:20px}.skill-chart{height:170px;gap:7px}.skill-column-track{width:20px;height:100px}.skill-value{font-size:11px}.summary-skills{margin-top:0}.summary-skills>p{font-size:11px}.topbar-actions .reset-btn{display:none}.topbar{min-height:73px}}
 @media(max-width:360px){.motion-ghost{left:16px;right:16px;max-width:calc(100% - 32px)}.study-summary{display:block}.summary-skills{margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}.skill-chart{max-width:240px;margin-inline:auto}}
-@media(prefers-reduced-motion:reduce){.skeleton-line::after{animation:none;display:none}.topbar-title h1,.topbar.is-compact .topbar-title h1,.scroll-context,.topbar.is-compact .scroll-context{transform:none}.motion-ripple{display:none}.motion-ghost{display:none}.motion-tab-indicator,.topbar,.topbar-title h1,.shell-top-meta,.scroll-context{transition:none}}
+@media(prefers-reduced-motion:reduce){.skeleton-line::after{animation:none;display:none}.topbar-title h1,.topbar.is-compact .topbar-title h1,.scroll-context,.topbar.is-compact .scroll-context{transform:none}.motion-ripple{display:none}.motion-ghost,.motion-capsule{display:none}.motion-tab-indicator,.topbar,.topbar-title h1,.shell-top-meta,.scroll-context{transition:none}}

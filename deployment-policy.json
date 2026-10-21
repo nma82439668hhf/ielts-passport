@@ -1,11 +1,17 @@
 {
-  "developmentFocus": "web-and-app-release",
-  "nativeUpdates": "enabled",
-  "nativePlatforms": ["windows", "android"],
-  "pausedPlatforms": ["macos", "linux", "ios"],
+  "developmentFocus": "web",
+  "nativeUpdates": "paused",
+  "nativePlatforms": [],
+  "pausedPlatforms": [
+    "windows",
+    "android",
+    "macos",
+    "linux",
+    "ios"
+  ],
   "cloudUpdates": "paused",
   "resumedAt": "2026-10-16",
-  "pausedAt": "2026-10-15",
+  "pausedAt": "2026-10-21",
   "resumeRequires": "explicit-user-request",
-  "reason": "用户明确要求打包发布 Windows 和 Android；仅恢复这两种安装包，其他平台与全局旧 App 云跳转通知保持暂停。"
+  "reason": "用户明确选择本轮只正式发布GitHub Pages网页和网页ZIP；不构建、不提升原生安装包，不恢复旧App云跳转。"
 }

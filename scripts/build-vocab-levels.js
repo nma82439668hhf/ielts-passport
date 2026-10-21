@@ -4,7 +4,7 @@ const path = require("path");
 const ROOT = path.resolve(__dirname, "..");
 const CEFR_DIR = process.env.CEFR_DIR ? path.resolve(process.env.CEFR_DIR) : path.join(ROOT, "work", "cefr-vocab");
 const ECDICT = process.env.ECDICT_PATH ? path.resolve(process.env.ECDICT_PATH) : path.join(ROOT, "work", "ecdict.csv");
-const SITE_DATA = process.env.SITE_DATA_DIR ? path.resolve(process.env.SITE_DATA_DIR) : path.join(ROOT, "site", "data");
+const SITE_DATA = process.env.SITE_DATA_DIR ? path.resolve(process.env.SITE_DATA_DIR) : path.join(require("./site-path").resolveSite(ROOT), "data");
 const EXAMPLES_PATH = process.env.EXAMPLES_PATH ? path.resolve(process.env.EXAMPLES_PATH) : path.join(ROOT, "work", "vocab-examples.json");
 const LEVELS = ["A1", "A2", "B1", "B2", "C1"];
 const LIMITS = { A1: 1092, A2: 1383, B1: 1800, B2: 1800, C1: 1026 };
@@ -219,6 +219,8 @@ function main() {
     "utf8"
   );
 
+  fs.writeFileSync(path.join(SITE_DATA, 'vocab-index.js'), require('./build-vocab-index').buildVocabIndex(require('./site-path').resolveSite(ROOT), SITE_DATA));
+  require('./build-vocab-shards').writeVocabShards(require('./site-path').resolveSite(ROOT), SITE_DATA);
   const summary = Object.fromEntries(
     Object.entries(vocabLevels).map(([level, entries]) => [level, entries.length])
   );

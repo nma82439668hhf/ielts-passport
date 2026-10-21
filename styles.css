@@ -4580,14 +4580,8 @@ body {
   justify-content: flex-end;
 }
 
-.view {
-  animation: liquid-view-in 0.52s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-@keyframes liquid-view-in {
-  from { opacity: 0; transform: translateY(10px) scale(0.992); filter: blur(5px); }
-  to { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
-}
+/* View transitions are owned by motion.js. A persistent transform/filter here
+   would make fixed learning actions relative to the view instead of the viewport. */
 
 .nav {
   gap: 7px;

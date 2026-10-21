@@ -36,7 +36,7 @@
   window.addEventListener("ielts:overlay-closed", syncMenu);
   sidebar.addEventListener("keydown", event => {
     if (event.key !== "Tab" || !mobile.matches) return;
-    const focusable=[...sidebar.querySelectorAll('button,a[href],input')].filter(el=>el.getClientRects().length&&!el.disabled);
+    const focusable=[...sidebar.querySelectorAll('button,a[href],input,summary')].filter(el=>el.getClientRects().length&&!el.disabled);
     const first=focusable[0],last=focusable[focusable.length-1];
     if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}
     else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}

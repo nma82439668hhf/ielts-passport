@@ -1,0 +1,14 @@
+# Keep deployed asset bytes identical to the verified source and web ZIP.
+/*.html -text
+/*.css -text
+/*.js -text
+/*.json -text
+/*.md -text
+/.nojekyll -text
+/manifest.webmanifest -text
+/data/** -text
+/assets/** -text
+/vendor/** -text
+/icons/** -text
+/scripts/*.js text eol=lf
+/.github/workflows/*.yml text eol=lf

@@ -38,7 +38,29 @@
       </div>
     </div>
 
-    <button id="shell-close-menu" class="shell-close-menu" aria-label="关闭导航"><i data-lucide="x"></i></button><nav class="nav" aria-label="主导航"><div class="nav-label">学习</div><button class="nav-item is-active" data-view="home"><i data-lucide="house"></i><span>学习概览</span></button><button class="nav-item " data-view="path"><i data-lucide="map"></i><span>学习地图</span></button><button class="nav-item " data-view="vocab"><i data-lucide="notebook-tabs"></i><span>分级词汇</span></button><button class="nav-item " data-view="practice"><i data-lucide="book-open-check"></i><span>题库练习</span></button><button class="nav-item " data-view="library"><i data-lucide="library"></i><span>阅读与写作</span></button><button class="nav-item " data-view="speaking"><i data-lucide="mic-2"></i><span>口语题库</span></button><button class="nav-item " data-view="ai"><i data-lucide="messages-square"></i><span>英语陪练</span></button><div class="nav-label">进阶</div><button class="nav-item " data-view="challenges"><i data-lucide="trophy"></i><span>题型挑战</span></button><button class="nav-item " data-view="exam"><i data-lucide="clipboard-check"></i><span>模拟考试</span></button><button class="nav-item " data-view="videos"><i data-lucide="play-circle"></i><span>教学系列</span></button><div class="nav-label">个人</div><button class="nav-item " data-view="account"><i data-lucide="user-round"></i><span>账户与同步</span></button><button class="nav-item " data-view="settings"><i data-lucide="settings"></i><span>设置</span></button></nav>
+    <button id="shell-close-menu" class="shell-close-menu" aria-label="关闭导航"><i data-lucide="x"></i></button>
+    <nav class="nav" aria-label="主导航">
+      <div class="nav-label">常用学习</div>
+      <button class="nav-item is-active" data-view="home"><i data-lucide="house"></i><span>学习概览</span></button>
+      <button class="nav-item" data-view="vocab"><i data-lucide="notebook-tabs"></i><span>分级词汇</span></button>
+      <button class="nav-item" data-view="practice" title="按阶段和技能选择练习"><i data-lucide="book-open-check"></i><span>题库练习</span></button>
+      <button class="nav-item" data-view="ai"><i data-lucide="messages-square"></i><span>英语陪练</span></button>
+      <button class="nav-item" data-view="review"><i data-lucide="notebook-pen"></i><span>错题复习</span></button>
+      <details class="sidebar-more">
+        <summary><i data-lucide="layers" aria-hidden="true"></i><span>更多训练</span><i data-lucide="chevron-down" aria-hidden="true"></i></summary>
+        <div class="sidebar-more-content">
+          <button class="nav-item" data-view="path"><i data-lucide="map"></i><span>学习地图</span></button>
+          <button class="nav-item" data-view="library"><i data-lucide="library"></i><span>阅读与写作</span></button>
+          <button class="nav-item" data-view="speaking"><i data-lucide="mic-2"></i><span>口语题库</span></button>
+          <button class="nav-item" data-view="challenges" title="选择单项或混合题型，进行短时训练"><i data-lucide="trophy"></i><span>题型挑战</span></button>
+          <button class="nav-item" data-view="exam" title="30道跨技能题，检查当前阶段的练习情况"><i data-lucide="clipboard-check"></i><span>综合测验</span></button>
+          <button class="nav-item" data-view="videos"><i data-lucide="play-circle"></i><span>教学系列</span></button>
+        </div>
+      </details>
+      <div class="nav-label">个人</div>
+      <button class="nav-item" data-view="account"><i data-lucide="user-round"></i><span>账户与同步</span></button>
+      <button class="nav-item" data-view="settings"><i data-lucide="settings"></i><span>设置</span></button>
+    </nav>
 
     <div class="sidebar-foot">
       <div class="target-card">
@@ -49,12 +71,15 @@
           <button id="target-plus" aria-label="提高目标分数"><i data-lucide="plus"></i></button>
         </div>
       </div>
-      <button class="install-btn" id="install-app">
-        <i data-lucide="download"></i><span>安装应用</span>
-      </button>
-      <button class="source-link" data-view="about" aria-label="题库来源与许可" title="题库来源与许可">
-        <i data-lucide="info"></i><span>题库来源与许可</span>
-      </button><div class="shell-profile"><span aria-hidden="true">学</span><div><strong>学习者</strong><small>本机学习档案</small></div></div>
+      <details class="sidebar-utilities">
+        <summary><span>应用与来源</span><i data-lucide="chevron-down" aria-hidden="true"></i></summary>
+        <div class="sidebar-utilities-content">
+          <a class="source-link" href="experience.html"><i data-lucide="sparkles"></i><span>产品体验</span></a>
+          <button class="install-btn" id="install-app"><i data-lucide="download"></i><span>安装应用</span></button>
+          <button class="source-link" data-view="about" aria-label="题库来源与许可" title="题库来源与许可"><i data-lucide="info"></i><span>题库来源与许可</span></button>
+        </div>
+      </details>
+      <div class="shell-profile"><span aria-hidden="true">学</span><div><strong>学习者</strong><small>本机学习档案</small></div></div>
     </div>
   </aside>
 
@@ -90,7 +115,7 @@
     <section class="view" id="view-root" tabindex="-1" aria-live="polite"></section>
 
     <footer class="footer">
-      <span>作者：Vega · 未经授权禁止外传</span>
+      <span>作者：Vega · 未经允许禁止用于一切商业用途</span>
       <button class="footer-support-btn" id="open-support">支持作者</button>
       <span id="footer-credit">题库：开放许可数据集</span>
     </footer>
@@ -134,7 +159,7 @@
       <span class="eyebrow">SUPPORT THE AUTHOR</span>
       <h2 id="support-title">如果你觉得可以 可以支持一下我的作品</h2>
       <img src="assets/vega-support.jpg" alt="Vega 赞赏码" />
-      <p>感谢支持 · 作者：Vega · 未经授权禁止外传</p>
+      <p>感谢支持 · 作者：Vega · 未经允许禁止用于一切商业用途</p>
     </div>
   </div>
 
@@ -155,20 +180,11 @@
     <div class="welcome-content"><div class="welcome-logo"><i data-lucide="stamp"></i><span>IELTS Passport</span></div>
     <h2 id="welcome-title">欢迎，开始你的第一天。</h2><p>从词汇到开口，按自己的节奏开始。</p>
     <button class="btn primary" id="welcome-enter">进入学习 <i data-lucide="arrow-right"></i></button></div>
-    <span class="welcome-foot">作者 Vega · 未经授权禁止外传</span>
+    <span class="welcome-foot">作者 Vega · 未经允许禁止用于一切商业用途</span>
   </section>
   <script src="theme.js"></script>
-  <script src="vendor/lucide.min.js"></script>
-  <script src="data/learn.js"></script>
-  <script src="data/vocab-levels.js"></script>
-  <script src="data/vocab-quiz.js"></script>
-  <script src="data/staged.js"></script>
-  <script src="data/library.js"></script>
-  <script src="data/grammar.js"></script>
-  <script src="data/reading.js"></script>
-  <script src="data/listening.js"></script>
-  <script src="data/writing.js"></script>
-  <script src="data/speaking.js"></script>
+  <script src="vendor/lucide-study.js"></script>
+  <script src="data/vocab-index.js"></script>
   <script src="data/vocab-meta.js"></script>
   <script src="data/sources.js"></script>
   <script src="data/version.js"></script>
@@ -177,6 +193,8 @@
   <script src="welcome-bootstrap.js"></script>
   <script src="hybrid-update.js"></script>
   <script src="motion.js"></script>
+  <script src="bank-loader.js"></script>
+  <script src="offline.js"></script>
   <script src="app.js"></script>
   <script src="shell.js"></script>
   <script src="study-panel.js"></script>

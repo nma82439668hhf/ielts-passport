@@ -1,0 +1,2 @@
+/* Extracted from the existing A1 vocabulary; regenerate with tools/build-experience-word.js. */
+window.IELTS_EXPERIENCE_WORD = {"word":"book","phonetic":"/buk/","meaning":"书；书籍","example":"That's Tom's book.","level":"A1","unit":6,"source":{"file":"data/vocab-levels.js","index":104,"sha256":"d668ddf2af782e76f7ea9753371a93a53293075a566790147f7a8fafc6f0cae4"},"question":"在这句话里，book 指的是什么？","options":["一本书","一把椅子","一个苹果"],"correct":0,"explanation":"book 在这句话中是名词，表示“书”。整句是“那是汤姆的书”。其他选项分别是 chair 和 apple。"};

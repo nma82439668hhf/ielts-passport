@@ -29,7 +29,7 @@
     library: "阅读与写作",
     practice: "题库练习",
     challenges: "题型挑战",
-    exam: "模拟考试",
+    exam: "综合测验",
     videos: "教学系列",
     ai: "英语陪练",
     account: "账户与同步",
@@ -157,7 +157,7 @@
         vocab: { attempted: 0, correct: 0 },
       },
       answers: {},
-      vocab: { seen: 0, known: [] },
+      vocab: { seen: 0, known: [], cards: {} },
       drafts: {},
       lastScore: {},
       daily: { date: "", words: 0, questions: 0, minutes: 0, tests: 0, lastMilestone: 0, wordsSeen: [] },
@@ -165,6 +165,9 @@
       profile: { displayName: "", email: "" },
       wrongAnswers: [],
       vocabUnits: {},
+      studyPlan: { level: "A1", minutes: 10, configured: false },
+      resume: null,
+      sessionDraft: null,
     };
   }
 
@@ -181,6 +184,9 @@
     vocabDeckKey: "",
     vocabUnit: 1,
     vocabIndex: 0,
+    vocabReview: false,
+    vocabReviewWords: [],
+    vocabSession: null,
     speakingIndex: Math.floor(Math.random() * ((BANK.speaking || []).length || 1)),
     speakingLevel: "A1",
     writingTaskIndex: 0,
@@ -200,6 +206,8 @@
       speechGeneration: 0,
       formDrafts: {},
       settingsOpen: false,
+      topicsOpen: false,
+      completed: false,
       listening: false,
       autoMode: false,
       status: "idle",
@@ -227,21 +235,45 @@
   let currentPopoverWord = "";
   let currentPopoverAnchor = null;
 
+  function normalizeProgress(value) {
+    const object = v => v && typeof v === "object" && !Array.isArray(v) ? v : {};
+    const count = v => Math.max(0, Number.isFinite(Number(v)) ? Number(v) : 0);
+    const defaults = defaultProgress(), parsed = object(value);
+    const result = { ...defaults, ...parsed };
+    for (const key of ["streak", "vocab", "studyPlan", "daily", "player", "profile"]) {
+      result[key] = { ...defaults[key], ...object(parsed[key]) };
+    }
+    result.stats = Object.fromEntries(Object.keys(defaults.stats).map(key => {
+      const stat = object(object(parsed.stats)[key]), attempted = count(stat.attempted);
+      return [key, { attempted, correct: Math.min(attempted, count(stat.correct)) }];
+    }));
+    for (const key of ["answers", "drafts", "lastScore", "vocabUnits"]) result[key] = { ...object(parsed[key]) };
+    result.vocab.known = Array.isArray(result.vocab.known) ? [...new Set(result.vocab.known.filter(v => typeof v === "string"))] : [];
+    result.vocab.cards = Object.fromEntries(Object.entries(object(result.vocab.cards)).filter(([,v]) => v && typeof v === "object").map(([key,v]) => [key, {
+      stage: Math.min(4, Math.floor(count(v.stage))), last: /^\d{4}-\d{2}-\d{2}$/.test(v.last) ? v.last : "",
+      due: /^\d{4}-\d{2}-\d{2}$/.test(v.due) ? v.due : todayKey(),
+    }]));
+    result.wrongAnswers = Array.isArray(parsed.wrongAnswers) ? parsed.wrongAnswers.filter(v => v && typeof v === "object").slice(-200) : [];
+    result.daily.wordsSeen = Array.isArray(result.daily.wordsSeen) ? result.daily.wordsSeen.filter(v => typeof v === "string") : [];
+    for (const key of ["words", "questions", "minutes", "tests"]) result.daily[key] = count(result.daily[key]);
+    result.player.xp = count(result.player.xp);
+    result.player.level = playerLevelFromXp(result.player.xp);
+    result.player.mockScores = Array.isArray(result.player.mockScores) ? result.player.mockScores.filter(v => v && Number.isFinite(v.score)) : [];
+    result.target = Number.isFinite(Number(result.target)) ? Math.min(9, Math.max(4, Number(result.target))) : defaults.target;
+    if (!["A0", "A1", "A2", "B1", "B2", "C1"].includes(result.studyPlan.level)) result.studyPlan.level = "A1";
+    if (![5,10,20,30].includes(result.studyPlan.minutes)) result.studyPlan.minutes = 10;
+    result.resume = parsed.resume && typeof parsed.resume.route === "string" && /^#[a-z]+(?:\?|$)/.test(parsed.resume.route) ? parsed.resume : null;
+    const session = object(parsed.sessionDraft);
+    result.sessionDraft = ["mock", "challenge", "review", "consolidation"].includes(session.kind) && Array.isArray(session.questions) && session.questions.length
+      ? { ...session, timerId: null, remaining: count(session.remaining) } : null;
+    return result;
+  }
+
   function loadProgress() {
     try {
       const raw = localStorage.getItem(progressStorageKey);
       if (raw) {
-        const parsed = JSON.parse(raw);
-        const defaults = defaultProgress();
-        return {
-          ...defaults,
-          ...parsed,
-          streak: { ...defaults.streak, ...(parsed.streak || {}) },
-          stats: { ...defaults.stats, ...(parsed.stats || {}) },
-          vocab: { ...defaults.vocab, ...(parsed.vocab || {}) },
-          daily: { ...defaults.daily, ...(parsed.daily || {}) },
-          player: { ...defaults.player, ...(parsed.player || {}) },
-        };
+        return normalizeProgress(JSON.parse(raw));
       }
     } catch (e) {
       /* ignore corrupt storage */
@@ -418,6 +450,12 @@
     }
     if (inheritGuest && user && !localStorage.getItem(key)) {
       localStorage.setItem(key, JSON.stringify(state.progress));
+    }
+    if(progressStorageKey!==key){
+      window.clearTimeout(cloudSyncTimer);
+      stopSessionTimer(); invalidateAiRequest(); stopAiListening(true);
+      state.session=null;state.currentTest=null;state.answerMap={};state.vocabDeckKey='';state.vocabReview=false;
+      state.ai.messages=[];state.ai.formDrafts={};state.ai.completed=false;state.ai.stepIndex=0;
     }
     progressStorageKey = key;
     state.progress = loadProgress();
@@ -616,10 +654,9 @@
     return true;
   }
 
-  async function supabaseUser() {
-    const user = state.account.user;
+  async function supabaseUser(user = state.account.user, cloud = state.account.cloud) {
     if (!user || user.mode !== "supabase" || !user.accessToken) throw new Error("请先登录云端账户");
-    const { url, anonKey } = state.account.cloud;
+    const { url, anonKey } = cloud;
     const res = await fetch(`${url.replace(/\/$/, "")}/auth/v1/user`, {
       headers: { apikey: anonKey, Authorization: `Bearer ${user.accessToken}` },
     });
@@ -628,31 +665,39 @@
   }
 
   async function syncProgressToCloud(silent = false) {
+    const user=state.account.user,key=progressStorageKey,cloud={...state.account.cloud};
+    const progress=JSON.parse(JSON.stringify(state.progress));
+    const current=()=>state.account.user===user&&progressStorageKey===key;
     try {
-      const cloudUser = await supabaseUser();
-      const { url, anonKey } = state.account.cloud;
-      const data = { ...(cloudUser.user_metadata || {}), ielts_passport_progress: state.progress };
+      const cloudUser = await supabaseUser(user,cloud);
+      if(!current())return;
+      const { url, anonKey } = cloud;
+      const data = { ...(cloudUser.user_metadata || {}), ielts_passport_progress: progress };
       const res = await fetch(`${url.replace(/\/$/, "")}/auth/v1/user`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json", apikey: anonKey, Authorization: `Bearer ${state.account.user.accessToken}` },
+        headers: { "Content-Type": "application/json", apikey: anonKey, Authorization: `Bearer ${user.accessToken}` },
         body: JSON.stringify({ data }),
       });
       if (!res.ok) throw new Error("同步失败");
+      if(!current())return;
       state.account.syncStatus = "synced";
       if (!silent) toast("学习进度已同步到云端");
-      render();
+      if (state.view === "account" && !silent) render();
     } catch (e) {
+      if(!current())return;
       state.account.syncStatus = "error";
       if (!silent) toast(e.message);
     }
   }
 
   async function loadProgressFromCloud() {
+    const user=state.account.user,key=progressStorageKey,cloud={...state.account.cloud};
     try {
-      const cloudUser = await supabaseUser();
+      const cloudUser = await supabaseUser(user,cloud);
+      if(state.account.user!==user||progressStorageKey!==key)return;
       const progress = cloudUser.user_metadata && cloudUser.user_metadata.ielts_passport_progress;
       if (progress) {
-        state.progress = { ...defaultProgress(), ...progress };
+        state.progress = normalizeProgress(progress);
         save();
         if (state.view === "account") render();
       }
@@ -684,13 +729,50 @@
     return BANK.learn && BANK.learn.vocab ? BANK.learn.vocab : [];
   }
 
-  function resetVocabDeck() {
-    const vocab = getLevelVocab(state.vocabLevel);
-    const start = Math.max(0, (state.vocabUnit - 1) * 20);
-    const unitIndices = [...Array(Math.min(20, Math.max(0, vocab.length - start))).keys()].map((i) => start + i);
-    state.vocabDeck = shuffle(unitIndices);
-    state.vocabIndex = 0;
-    state.vocabDeckKey = `${state.vocabLevel}:${state.vocabUnit}`;
+  const vocabIndexSets = new Map();
+  function dueVocabKeys() {
+    const cards=state.progress.vocab.cards, known=state.progress.vocab.known, today=todayKey();
+    return [...new Set([...known,...Object.keys(cards)])].filter(key=>{
+      const split=key.indexOf(":"), level=key.slice(0,split), word=key.slice(split+1);
+      const schedule=cards[key];
+      if(split<0 || schedule?.due && schedule.due>today) return false;
+      const indexLevel = level === 'A0' ? 'A1' : level;
+      const index = BANK.vocabIndex.words;
+      const words = index[indexLevel] || index.fallback;
+      if(!vocabIndexSets.has(words))vocabIndexSets.set(words,new Set(words));
+      return vocabIndexSets.get(words).has(word);
+    });
+  }
+
+  function dueVocabWords() {
+    return dueVocabKeys().sort((a,b)=>(state.progress.vocab.cards[a]?.due||todayKey()).localeCompare(state.progress.vocab.cards[b]?.due||todayKey())).slice(0,20).map(key=>{
+      const split=key.indexOf(":"),level=key.slice(0,split),word=key.slice(split+1);
+      const schedule=state.progress.vocab.cards[key];
+      const item=getLevelVocab(level).find(item=>item.w===word);
+      return item ? {...item,studyLevel:level,studyKey:key,due:schedule?.due||todayKey()} : null;
+    }).filter(Boolean).sort((a,b)=>a.due.localeCompare(b.due));
+  }
+
+  function scheduleVocab(key, known) {
+    const today=todayKey(), old=state.progress.vocab.cards[key]||{};
+    const stage=known ? old.last===today ? Math.max(1,old.stage||0) : Math.min(4,(old.stage||0)+1) : 0;
+    const date=new Date(today+"T12:00:00");date.setDate(date.getDate()+([1,1,3,7,14][stage]));
+    const due=`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+    state.progress.vocab.cards[key]={stage,last:today,due};
+    if(known && !state.progress.vocab.known.includes(key))state.progress.vocab.known.push(key);
+    if(!known)state.progress.vocab.known=state.progress.vocab.known.filter(item=>item!==key);
+  }
+
+  function activeVocabWords() {return state.vocabReview ? state.vocabReviewWords : getLevelVocab(state.vocabLevel);}
+
+  function resetVocabDeck(force=false) {
+    if(state.vocabReview)state.vocabReviewWords=dueVocabWords().slice(0,20);
+    const vocab=activeVocabWords(),start=state.vocabReview?0:Math.max(0,(state.vocabUnit-1)*20);
+    const indices=Array.from({length:Math.min(20,Math.max(0,vocab.length-start))},(_,i)=>start+i);
+    state.vocabDeck=shuffle(indices.filter(i=>state.vocabReview||force||!state.progress.vocab.known.includes(`${state.vocabLevel}:${vocab[i].w}`)));
+    state.vocabIndex=0;
+    state.vocabDeckKey=state.vocabReview?'review':`${state.vocabLevel}:${state.vocabUnit}`;
+    state.vocabSession={total:state.vocabDeck.length,known:0,again:[]};
   }
 
   let activeAudio = null;
@@ -1159,41 +1241,17 @@
     return [0, 80, 200, 380, 620, 920, 1280, 1700, 2200][Math.max(0, Math.min(8, level - 1))] ?? 2200;
   }
 
-  function levelBandLabel(level) {
-    return {
-      1: "Lv1 零基础 · A0–A1",
-      2: "Lv2 入门 · Band 3.0–3.5",
-      3: "Lv3 基础 · Band 4.0–4.5",
-      4: "Lv4 进阶 · Band 5.0–5.5",
-      5: "Lv5 中级 · Band 5.5–6.0",
-      6: "Lv6 稳过 · Band 6.0–6.5",
-      7: "Lv7 熟练 · Band 7.0–7.5",
-      8: "Lv8 高分 · Band 8.0",
-      9: "Lv9 大师 · Band 8.5+",
-    }[level] || "入门 · Band 3.0–3.5";
-  }
-
   function addXp(amount) {
     const player = state.progress.player;
     player.xp = Math.max(0, (player.xp || 0) + Number(amount || 0));
     player.level = playerLevelFromXp(player.xp);
   }
 
-  function estimateBand() {
-    const stats = state.progress.stats;
-    const attempted = Object.values(stats).reduce((n, s) => n + (s.attempted || 0), 0);
-    const correct = Object.values(stats).reduce((n, s) => n + (s.correct || 0), 0);
-    const accuracy = attempted ? correct / attempted : 0;
-    const volume = Math.min(1, attempted / 300);
-    const raw = 3.0 + accuracy * 4.5 + volume * 0.8;
-    const rounded = Math.round(raw * 2) / 2;
-    return Math.max(3.0, Math.min(8.5, rounded));
-  }
-
-  function mockBandFromScore(score, level) {
-    const base = level === "A0" || level === "A1" || level === "A2" ? 3.0 : level === "B1" || level === "B2" ? 4.0 : 4.5;
-    const span = level === "A0" || level === "A1" || level === "A2" ? 3.5 : level === "B1" || level === "B2" ? 4.0 : 4.5;
-    return Math.max(3.0, Math.min(9.0, Math.round((base + (score / 100) * span) * 2) / 2));
+  function practicePerformance() {
+    const stats = Object.values(state.progress.stats);
+    const attempted = stats.reduce((n, item) => n + (item.attempted || 0), 0);
+    const correct = stats.reduce((n, item) => n + (item.correct || 0), 0);
+    return { attempted, correct, accuracy: attempted ? Math.round(correct / attempted * 100) : null };
   }
 
   function recordDailyWords(count) {
@@ -1256,21 +1314,95 @@
     return stat.attempted ? Math.round((stat.correct / stat.attempted) * 100) : 0;
   }
 
-  function setView(view, param) {
-    if (state.view === "ai" && view !== "ai") leaveAiView();
-    if (state.config.requireLogin && !state.account.user && !["account", "about"].includes(view)) {
-      state.view = "account";
-      state.param = null;
-      toast("请先登录后使用");
-      render();
-      return;
+  let routeMode="replace",applyingRoute=false,lastRoute="";
+
+  function sessionDraftKey(session) {return `session:${session.kind}:${session.type}:${session.level}`;}
+
+  function answerDraftKey() {
+    return state.view==='session'&&state.session ? sessionDraftKey(state.session)
+      : `${state.view}:${state.param||''}:${state.currentTest?.section||0}`;
+  }
+  function saveAnswerDraft() {
+    if(state.currentTest?.checked || !$('#view-root [data-qpath]'))return;
+    const values={};
+    Object.entries(state.answerMap).forEach(([key,meta])=>{const value=selectedAnswer(key,meta);if(value)values[key]=value;});
+    state.progress.answers[answerDraftKey()]=values;
+    persistSession();save();
+  }
+  function restoreAnswerDraft() {
+    const draft=state.progress.answers[answerDraftKey()]||{};
+    const result=state.view==='session'?state.session?.result:draft.submitted?draft.result:null;
+    const values=result?.values||draft.values||draft;
+    Object.entries(values).forEach(([key,value])=>{
+      $$(`.q-options button[data-qpath="${key}"]`).forEach(button=>{const selected=button.dataset.value===value;button.classList.toggle('selected',selected);button.setAttribute('aria-pressed',String(selected));});
+      const input=$(`input[data-qpath="${key}"]`);if(input)input.value=value;
+    });
+    if($('#view-root [data-qpath]'))updateLiveScore();
+    if(result){
+      if(state.currentTest)state.currentTest.checked=true;
+      showAnswerFeedback(values);
+      showPracticeResult(result);
     }
-    state.view = view;
-    state.param = param || null;
-    render();
-    if ($(".sidebar")) $(".sidebar").classList.remove("sidebar-open");
-    $("body").classList.remove("sidebar-open");
-    window.scrollTo({ top: 0, behavior: "instant" in window ? "instant" : "auto" });
+  }
+  function persistSession() {
+    if(!state.session)return false;
+    const draft={...state.session,timerId:null};
+    if(JSON.stringify(draft)===JSON.stringify(state.progress.sessionDraft))return false;
+    state.progress.sessionDraft=draft;return true;
+  }
+  function currentRoute() {
+    const params=new URLSearchParams();
+    if(state.param)params.set('id',state.param);
+    if(state.view==='vocab'){params.set('level',state.vocabLevel);params.set('unit',state.vocabUnit);if(state.vocabReview)params.set('mode','review');}
+    if(state.view==='practice'){params.set('skill',state.practiceSkill);params.set('level',state.practiceLevel);}
+    if(state.view==='exam')params.set('level',state.examLevel);
+    if(state.view==='challenges')params.set('level',state.challengeLevel);
+    if(state.view==='listening')params.set('section',state.listeningSection||0);
+    if(state.view==='library'){params.set('tab',state.libraryTab);if(state.libraryItemId)params.set('item',state.libraryItemId);}
+    return '#'+state.view+(params.size?'?'+params:'');
+  }
+  function syncRoute() {
+    if(applyingRoute)return;
+    const route=currentRoute();
+    if(location.hash!==route)history[routeMode==='push'?'pushState':'replaceState']({ielts:true},'',route);
+    lastRoute=route;routeMode='replace';
+    if(['vocab','reading','listening','writing','quiz','lesson','ai'].includes(state.view)) {
+      const resume={route,title:VIEW_TITLES[state.view],level:state.vocabLevel,unit:state.vocabUnit};
+      if(JSON.stringify(resume)!==JSON.stringify(state.progress.resume)){state.progress.resume=resume;save();}
+    }
+    if(state.view==='session'&&persistSession())save();
+  }
+  function applyRoute(route=location.hash) {
+    if(route==='#view-root')return;
+    const [raw,query='']=String(route||'#home').slice(1).split('?');
+    const view=Object.prototype.hasOwnProperty.call(VIEW_TITLES,raw)?raw:'home',params=new URLSearchParams(query);
+    const level=params.get('level'),levels=['A0','A1','A2','B1','B2','C1','IELTS','all','ALL'];
+    saveAnswerDraft();
+    if(state.view==='ai'&&view!=='ai')leaveAiView();
+    if(state.view==='session'&&view!=='session')stopSessionTimer();
+    applyingRoute=true;state.view=view;state.param=params.get('id');
+    if(view==='vocab'){
+      if(['A0','A1','A2','B1','B2','C1','IELTS'].includes(level))state.vocabLevel=level;
+      state.vocabUnit=Math.max(1,Math.min(9999,Number(params.get('unit'))||1));
+      state.vocabReview=params.get('mode')==='review';state.vocabDeckKey='';
+    }
+    if(view==='practice'){if(['reading','listening','writing','vocab','grammar','speaking'].includes(params.get('skill')))state.practiceSkill=params.get('skill');if(levels.includes(level))state.practiceLevel=level;}
+    if(view==='exam'&&levels.includes(level))state.examLevel=level;
+    if(view==='challenges'&&levels.includes(level))state.challengeLevel=level;
+    if(view==='library'){state.libraryTab=params.get('tab')||'stories';state.libraryItemId=params.get('item')||'';}
+    if(view==='listening')state.listeningSection=Math.max(0,Math.floor(Number(params.get('section'))||0));
+    if(view==='session'&&!state.session){state.session=state.progress.sessionDraft; if(!state.session)state.view='exam';}
+    render();applyingRoute=false;lastRoute=location.hash;syncRoute();
+  }
+  function setView(view, param, keepVocabMode=false) {
+    saveAnswerDraft();
+    if(state.view==='session'&&view!=='session')stopSessionTimer();
+    if(state.view==='ai'&&view!=='ai')leaveAiView();
+    if(view==='vocab'&&!keepVocabMode&&state.vocabReview){state.vocabReview=false;state.vocabDeckKey='';}
+    if(state.config.requireLogin&&!state.account.user&&!['account','about'].includes(view)){view='account';param=null;toast('请先登录后使用');}
+    state.view=view;state.param=param||null;routeMode='push';render();
+    document.body.classList.remove('sidebar-open');
+    window.scrollTo({top:0,behavior:'instant'});
   }
 
   function setTarget(delta) {
@@ -1278,34 +1410,78 @@
     state.progress.target = next;
     save();
     renderTarget();
+    if(state.view==='home')render();
   }
 
-  function render() {
+  let renderGeneration = 0;
+  function vocabBanks(levels) {
+    return [...new Set(levels.map(level=>level==='A0'?'A1':level))].map(level=>['A1','A2','B1','B2','C1'].includes(level)?'vocab:'+level:'learn');
+  }
+  function viewBanks() {
+    const questionPools = ['staged','vocabQuiz','grammar','reading','listening'];
+    switch(state.view) {
+      case 'vocab': return vocabBanks(state.vocabReview?dueVocabKeys().sort((a,b)=>(state.progress.vocab.cards[a]?.due||todayKey()).localeCompare(state.progress.vocab.cards[b]?.due||todayKey())).slice(0,20).map(key=>key.split(':')[0]):[state.vocabLevel]);
+      case 'path': case 'lesson': return ['learn'];
+      case 'practice': return state.practiceSkill === 'vocab' ? ['vocabQuiz'] : ['staged',state.practiceSkill];
+      case 'reading': case 'listening': case 'writing': return ['staged',state.view];
+      case 'quiz': return ['vocabQuiz'];
+      case 'speaking': return ['staged','speaking'];
+      case 'library': return ['library'];
+      case 'exam': case 'challenges': return questionPools;
+      case 'session': return state.session?.kind === 'consolidation' ? vocabBanks([state.session.level]) : [];
+      default: return [];
+    }
+  }
+
+  function render(continueLoading = false) {
+    const generation = ++renderGeneration;
+    renderTarget();
     const root = $("#view-root");
     const titleEl = $("#view-title");
     if (state.config.requireLogin && !state.account.user && !["account", "about"].includes(state.view)) {
       state.view = "account";
     }
-    if (window.IELTSMotion) window.IELTSMotion.beforeRender({view:state.view,param:state.param,key:[state.param,state.libraryTab,state.libraryItemId,state.practiceSkill,state.practiceLevel,state.vocabLevel,state.vocabUnit].join(":"),detail:!!state.libraryItemId,result:!!state.session?.result});
-    titleEl.textContent = VIEW_TITLES[state.view] || "今日学习";
+    if (window.IELTSMotion && !continueLoading) window.IELTSMotion.beforeRender({view:state.view,param:state.param,key:[state.param,state.libraryTab,state.libraryItemId,state.practiceSkill,state.practiceLevel,state.vocabLevel,state.vocabUnit].join(":"),detail:!!state.libraryItemId,result:!!state.session?.result});
+    titleEl.textContent = state.view==='session'&&state.session?.result?'练习结果':VIEW_TITLES[state.view] || "今日学习";
     $$(".nav-item").forEach((btn) => {
       const activeView = btn.dataset.view === state.view;
       const activeByParam = state.view === "lesson" && btn.dataset.view === "path";
       const activePractice = ["reading", "listening", "writing", "quiz"].includes(state.view) && btn.dataset.view === "practice";
+      const activeSession=state.view==='session'&&btn.dataset.view===(state.session?.kind==='review'?'review':state.session?.kind==='consolidation'?'vocab':state.session?.kind==='mock'?'exam':'challenges');
       const gated = state.config.requireLogin && !state.account.user && btn.dataset.view !== "account";
-      btn.classList.toggle("is-active", activeView || activeByParam || activePractice);
+      btn.classList.toggle("is-active", activeView || activeByParam || activePractice || activeSession);
       btn.classList.toggle("is-locked", gated);
+      if (btn.classList.contains("is-active")) {
+        const group = btn.closest("details");
+        if (group) group.open = true;
+      }
     });
     $$(".mobile-bottom-nav button").forEach((btn) => {
       const view = btn.dataset.view;
       const activePractice = ["reading", "listening", "writing", "quiz"].includes(state.view) && view === "practice";
       const activeMine = ["account", "settings"].includes(state.view) && view === "account";
-      const activeReview = ["review", "session"].includes(state.view) && view === "review";
+      const activeReview = (state.view === "review" || state.view === "session" && state.session?.kind === "review") && view === "review";
       btn.classList.toggle("is-active", state.view === view || activePractice || activeMine || activeReview);
       const gated = state.config.requireLogin && !state.account.user && view !== "account";
       btn.classList.toggle("is-locked", gated);
     });
 
+    const banks = viewBanks();
+    if (!window.IELTSBankLoader.ready(banks)) {
+      root.setAttribute('aria-busy','true');
+      root.innerHTML = window.IELTSMotion ? window.IELTSMotion.skeleton('正在加载学习内容…') : '<p role="status">正在加载学习内容…</p>';
+      syncRoute();
+      window.IELTSBankLoader.ensure(banks).then(() => {
+        if (generation === renderGeneration) render(true);
+      }).catch(() => {
+        if (generation !== renderGeneration) return;
+        root.removeAttribute('aria-busy');
+        root.innerHTML = '<section class="panel empty-state" role="status"><h2>学习内容暂未加载成功</h2><p>请检查网络后重试。离线时，请先在线打开并准备好学习内容。</p><button class="btn primary" data-action="retry-bank">重新加载</button><button class="btn ghost" data-action="go" data-view="home">返回首页</button></section>';
+        if (window.IELTSMotion) window.IELTSMotion.afterRender();
+      });
+      return;
+    }
+    root.removeAttribute('aria-busy');
     let html = "";
     switch (state.view) {
       case "home": html = renderHome(); break;
@@ -1332,9 +1508,12 @@
     }
 
     root.innerHTML = html;
+    restoreAnswerDraft();
+    syncRoute();
     if (window.IELTSTheme) window.IELTSTheme.syncControls();
     refreshIcons();
     if (window.IELTSMotion) window.IELTSMotion.afterRender();
+    if (state.view === 'session' && state.session && !state.session.result && !state.session.timerId) startSessionTimer();
     if (state.view === "ai") window.requestAnimationFrame(scrollAiMessages);
   }
 
@@ -1353,14 +1532,21 @@
     const correct=Object.values(stats).reduce((n,s)=>n+(s.correct||0),0);
     const current=xpForLevel(player.level), next=xpForLevel(player.level+1);
     const pct=Math.max(0,Math.min(100,(player.xp-current)/(next-current||1)*100));
-    const preview=getLevelVocab(state.vocabLevel).find(x=>x.w.length>=6&&x.w.length<=9)||getLevelVocab(state.vocabLevel)[0];
-    const rows=[['practice','book-open-check','题库练习','词汇、语法、听力与阅读，按阶段练习','分级题库'],['ai','messages-square','英语陪练','从日常话题开始，练习用英语表达','对话练习'],['exam','clipboard-check','模拟考试','用一套完整练习，了解当前的薄弱项','综合训练']];
-    return `<div class="overview-heading"><div><h2>今天</h2><p>先学词汇，再练表达。</p></div><button class="text-link" data-action="go" data-view="path">学习地图<i data-lucide="arrow-up-right"></i></button></div>
-    <div class="home-workspace"><div><section class="primary-task" aria-labelledby="vocab-task-title"><div><h3 id="vocab-task-title">今日词汇</h3><p>20 个单词，按自己的节奏学。</p><div class="task-context"><i data-lucide="notebook-tabs"></i>${esc(state.vocabLevel)} · Unit ${state.vocabUnit}</div><button class="btn primary" data-action="go" data-view="vocab">开始学词<i data-lucide="arrow-right"></i></button></div><div class="task-preview"><span class="preview-label">词汇预览</span><strong>${esc(preview.w)}</strong><span>${esc(preview.zh||preview.meaning||'')}</span></div></section>
+    const previews=BANK.vocabIndex.previews;
+    const preview=previews[state.vocabLevel==='A0'?'A1':state.vocabLevel]||previews.fallback;
+    const rows=[['practice','book-open-check','题库练习','词汇、语法、听力与阅读，按阶段练习','分级题库'],['ai','messages-square','英语陪练','从日常话题开始，练习用英语表达','对话练习'],['exam','clipboard-check','综合测验','30 道跨技能题，检查当前阶段的练习情况','综合训练']];
+    const due=dueVocabKeys().length, wrong=(state.progress.wrongAnswers||[]).length, plan=state.progress.studyPlan;
+    const resume=state.progress.resume;
+    const planHtml=`<details class="study-plan"><summary>${plan.configured?'调整学习安排':'选择适合你的起点'}<span>${esc(plan.level)} · 每天 ${plan.minutes} 分钟</span></summary><form id="study-plan-form"><label>从哪个阶段开始<select id="plan-level">${[['A0','刚开始学英语'],['A1','能表达简单信息'],['A2','能进行日常交流'],['B1','能表达经历与想法'],['B2','能讨论较复杂话题'],['C1','进阶练习']].map(([value,label])=>`<option value="${value}" ${plan.level===value?'selected':''}>${value} · ${label}</option>`).join('')}</select></label><label>每日时间<select id="plan-minutes">${[5,10,20,30].map(value=>`<option value="${value}" ${plan.minutes===value?'selected':''}>${value} 分钟</option>`).join('')}</select></label><button class="btn primary" data-action="save-study-plan" type="button">使用这个安排</button></form><p>时间是可投入的偏好，每组仍为 20 词；可以分几次学完，随时调整。</p></details>`;
+    return `<div class="overview-heading"><div><h2>今天</h2><p>先学词汇，再练表达。<a class="home-experience-entry" href="experience.html">了解学习方式</a></p></div><button class="text-link" data-action="go" data-view="path">学习地图<i data-lucide="arrow-up-right"></i></button></div>
+    ${resume?`<button class="resume-study" data-action="resume-study"><span><strong>继续上次学习</strong><small>${esc(resume.title)}${resume.route.startsWith('#vocab')?` · ${esc(resume.level)} · Unit ${resume.unit}`:''}</small></span><i data-lucide="arrow-right"></i></button>`:''}
+    <div class="home-workspace"><div><section class="primary-task" aria-labelledby="vocab-task-title"><div><h3 id="vocab-task-title">今日词汇</h3><p>20 个单词，按自己的节奏学。</p><div class="task-context"><i data-lucide="notebook-tabs"></i>${esc(state.vocabLevel)} · Unit ${state.vocabUnit}</div><button class="btn primary" data-action="go" data-view="vocab" data-motion="capsule">开始学词<i data-lucide="arrow-right"></i></button></div><div class="task-preview"><span class="preview-label">词汇预览</span><strong>${esc(preview.w)}</strong><span>${esc(preview.zh||preview.meaning||'')}</span></div></section>
     <div class="today-progress"><span>今日单词</span><div class="word-sequence" aria-hidden="true">${Array.from({length:20},(_,i)=>`<span class="${i<daily.words?'done':''}"></span>`).join('')}</div><strong>${daily.words} / 20</strong></div>
+    ${due||wrong?`<section class="review-queue" aria-label="待复习"><div><h3>先巩固，再学新的</h3><p>${due} 个到期单词 · ${wrong} 道待复习题</p></div><div>${due?'<button class="btn ghost" data-action="start-vocab-review">复习单词</button>':''}${wrong?'<button class="btn ghost" data-action="go" data-view="review">复习错题</button>':''}</div></section>`:''}
+    ${planHtml}
     <section class="study-queue"><div class="section-line"><h3>接着练一练</h3><span>按自己的节奏</span></div><div class="ios-group">${rows.map(([view,icon,title,desc,meta])=>`<button class="study-row" data-action="go" data-view="${view}"><i class="row-icon" data-lucide="${icon}"></i><span><strong>${title}</strong><small>${desc}</small></span><span class="row-meta">${meta}</span><i data-lucide="chevron-right"></i></button>`).join('')}</div></section>
     <div class="weekly-strip"><div><strong>${attempted}</strong><span>累计练习</span></div><div><strong>${attempted?Math.round(correct/attempted*100):0}%</strong><span>练习正确率</span></div><div><strong>${state.progress.streak.count}</strong><span>连续学习天数</span></div></div></div>
-    <aside class="study-summary" aria-label="学习进度"><h3>你的学习进度</h3><div class="summary-goal"><strong>${state.progress.target.toFixed(1)}</strong><span>目标 Band</span></div><p class="summary-note">从基础开始，逐级练习。</p><div class="summary-xp"><strong>Lv.${player.level} 当前等级</strong><span>${player.xp} / ${next} XP</span></div><div class="progress-track"><span style="width:${pct}%"></span></div><div class="summary-skills"><p>各项练习正确率</p><div class="skill-chart" role="group" aria-label="四项练习正确率">${['listening','reading','writing','speaking'].map(skill=>`<div class="skill-column" aria-label="${SKILL_META[skill].label}：${stats[skill].attempted?scorePercent(skill)+'%':'尚未练习'}"><span class="skill-value">${stats[skill].attempted?scorePercent(skill)+'%':'—'}</span><div class="skill-column-track" aria-hidden="true"><span class="skill-column-bar" data-chart-bar="${skill}" data-chart-value="${scorePercent(skill)}" style="height:${scorePercent(skill)}%"></span></div><span class="skill-column-label">${SKILL_META[skill].label}</span></div>`).join('')}</div>${['listening','reading','writing','speaking'].every(skill=>!stats[skill].attempted)?'<p class="skill-chart-empty">完成练习后，这里会显示你的进度。</p>':''}</div><p class="summary-footnote">练习数据仅供学习参考，不等同于正式考试成绩。</p></aside></div><p class="home-bottom-note">学习记录保存在当前浏览器，可在账户页导出备份或登录同步。</p>`;
+    <aside class="study-summary" aria-label="学习进度"><h3>你的学习进度</h3><div class="summary-goal"><strong>${state.progress.target.toFixed(1)}</strong><span>目标 Band</span></div><p class="summary-note">从基础开始，逐级练习。</p><div class="summary-xp"><strong>Lv.${player.level} 当前等级</strong><span>${player.xp} / ${next} XP</span></div><div class="progress-track"><span style="width:${pct}%"></span></div>${attempted?`<div class="summary-skills"><p>各项练习正确率</p><div class="skill-chart" role="group" aria-label="四项练习正确率">${['listening','reading','writing','speaking'].map(skill=>`<div class="skill-column" aria-label="${SKILL_META[skill].label}：${stats[skill].attempted?scorePercent(skill)+'%':'尚未练习'}"><span class="skill-value">${stats[skill].attempted?scorePercent(skill)+'%':'—'}</span><div class="skill-column-track" aria-hidden="true"><span class="skill-column-bar" data-chart-bar="${skill}" data-chart-value="${scorePercent(skill)}" style="height:${scorePercent(skill)}%"></span></div><span class="skill-column-label">${SKILL_META[skill].label}</span></div>`).join('')}</div>${['listening','reading','writing','speaking'].every(skill=>!stats[skill].attempted)?'<p class="skill-chart-empty">完成练习后，这里会显示你的进度。</p>':''}</div>`:`<div class="first-study-guide"><h4>先完成第一次练习</h4><p>学一组词，或做一篇短阅读。练习后，这里会显示真实记录和待巩固内容。</p><button class="text-link" data-action="go" data-view="practice">试一篇短阅读<i data-lucide="arrow-right"></i></button></div>`}<p class="summary-footnote">本站练习表现不换算官方雅思成绩。</p></aside></div><p class="home-bottom-note">学习记录保存在当前浏览器，可在账户页导出备份或登录同步。</p>`;
 
   }
 
@@ -1442,7 +1628,7 @@
     const score = last !== undefined ? `${last}%` : "未开始";
     const count = item.questions ? `${item.questions.length} 题` : item.passages ? `${item.passages.length} 篇` : item.sections ? `${item.sections.length} section` : "";
     return `
-      <div class="test-card" data-action="open-test" data-skill="${skill}" data-id="${item.id}">
+      <div class="test-card" data-action="open-test" data-skill="${skill}" data-id="${item.id}" data-motion="capsule">
         <div class="test-icon ${meta.color}"><i data-lucide="${meta.icon}"></i></div>
         <div class="test-main"><strong>${esc(item.title)}</strong><span><span class="tag ${item.level === "A1" || item.level === "A2" ? "teal" : "gold"}">${esc(item.level || "IELTS")}</span> ${esc(item.duration || "")} ${count ? "· " + esc(count) : ""}</span></div>
         <div class="test-score">${esc(score)}</div>
@@ -1557,6 +1743,7 @@
     state.session.timerId = setInterval(() => {
       if (!state.session || state.session.result) return;
       state.session.remaining -= 1;
+      if(state.session.remaining%15===0){persistSession();save();}
       const el = $("#session-timer");
       if (el) el.textContent = formatClock(state.session.remaining);
       if (state.session.remaining <= 0) submitSession();
@@ -1564,6 +1751,7 @@
   }
 
   function startSession(kind, type, level) {
+    saveAnswerDraft();stopSessionTimer();
     const questions = kind === "mock" ? buildMockQuestions(level) : buildChallengeQuestions(type, level);
     if (!questions.length) {
       toast("这个阶段暂时没有足够的自动判分题");
@@ -1580,11 +1768,13 @@
       result: null,
       timerId: null,
     };
+    delete state.progress.answers[sessionDraftKey(state.session)];
     setView("session");
     startSessionTimer();
   }
 
   function startReviewSession() {
+    saveAnswerDraft();stopSessionTimer();
     const wrong = (state.progress.wrongAnswers || []).slice(-40);
     if (!wrong.length) {
       toast("暂时没有错题");
@@ -1604,6 +1794,7 @@
     state.answerMap = {};
     state.currentTest = null;
     state.session = { kind: "review", type: "mixed", level: "REVIEW", questions, remaining: 15 * 60, result: null, timerId: null };
+    delete state.progress.answers[sessionDraftKey(state.session)];
     setView("session");
     startSessionTimer();
   }
@@ -1617,12 +1808,9 @@
     const xpBefore = state.progress.player.xp;
     const result = checkAnswers();
     if (!result) return;
-    const band = session.kind === "mock" ? mockBandFromScore(result.score, session.level) : 0;
     const xp = state.progress.player.xp - xpBefore;
-    if (session.kind === "mock") {
-      state.progress.player.bestBand = Math.max(state.progress.player.bestBand || 0, band);
-      state.progress.player.mockScores = (state.progress.player.mockScores || []).concat({ level: session.level, score: result.score, band, date: todayKey() }).slice(-20);
-      state.progress.player.estimatedBand = band;
+    if (session.kind === "mock" && result.answered) {
+      state.progress.player.mockScores = (state.progress.player.mockScores || []).concat({ level: session.level, score: result.score, date: todayKey() }).slice(-20);
     } else if (session.kind === "review") {
       session.questions.forEach((q, i) => {
         const qpath = `p${i}:g0:q0`;
@@ -1640,22 +1828,26 @@
           state.progress.wrongAnswers = (state.progress.wrongAnswers || []).filter((item) => !(item.question === q.text && item.answer === q.answer));
         }
       });
-      state.progress.lastScore[`review:${session.level}`] = result.score;
-      state.progress.player.estimatedBand = estimateBand();
-    } else {
+      if(result.answered)state.progress.lastScore[`review:${session.level}`] = result.score;
+    } else if (result.answered && session.kind === 'challenge') {
       state.progress.lastScore[`challenge:${session.type}:${session.level}`] = result.score;
-      state.progress.player.estimatedBand = estimateBand();
     }
     state.session.result = {
       correct: result.correct,
       total: result.total,
       score: result.score,
-      band,
       xp,
-      passed: band ? band >= state.progress.target : false,
+      answered: result.answered,
+      skipped: result.skipped,
+      values: result.values,
     };
+    persistSession();
     save();
     render();
+    const heading = $('.exam-result h2');
+    heading?.setAttribute('tabindex', '-1');
+    heading?.focus({preventScroll: true});
+    window.scrollTo({top: 0, behavior: 'instant'});
   }
 
   function renderChallenges() {
@@ -1678,7 +1870,7 @@
       <div class="module-grid">
         ${challenges.map((c) => {
           const best = state.progress.lastScore[`challenge:${c.type}:${level}`];
-          return `<article class="module-card ${c.color} reveal" data-action="start-challenge" data-type="${c.type}" data-level="${level}">
+          return `<article class="module-card ${c.color} reveal" data-action="start-challenge" data-type="${c.type}" data-level="${level}" data-motion="capsule">
             <div class="module-top"><span class="module-num">${c.type === "vocab" ? "20" : "10"} 题</span><span class="tag ${c.color}">${best !== undefined ? `最高 ${best}%` : "未挑战"}</span></div>
             <h3>${esc(c.title)}</h3><div class="module-en">${esc(c.en)}</div><p>${esc(c.desc)}</p>
           </article>`;
@@ -1687,55 +1879,52 @@
   }
 
   function renderExam() {
-    const level = state.examLevel;
-    const player = state.progress.player;
-    player.estimatedBand = estimateBand();
-    const best = player.bestBand || 0;
-    return `
-      <div class="section-head reveal">
-        <div><h2>模拟雅思考试</h2><p>从当前阶段自动抽 30 道可判分题，覆盖词汇、语法、阅读和听力。</p></div>
-        <div class="tag gold">历史最高 Band ${best ? best.toFixed(1) : "—"}</div>
-      </div>
-      <div class="exam-hero panel reveal">
-        <div>
-          <span class="eyebrow">PLAYER LEVEL ${player.level} · XP ${player.xp}</span>
-          <h3>当前预测：Band ${player.estimatedBand.toFixed(1)}</h3>
-          <p>${levelBandLabel(player.level)}。模拟考试会根据正确率、题目阶段和历史表现更新预测分数。</p>
-        </div>
-        <div class="score-orb"><strong>${player.estimatedBand.toFixed(1)}</strong><span>预测分</span></div>
-      </div>
-      <div class="filter-bar reveal" style="margin:18px 0 16px">
-        <span style="font-size:12px;color:var(--muted)">考试阶段</span>
-        <div class="seg">${["A0", "A1", "A2", "B1", "B2", "C1", "IELTS"].map((l) => `<button data-action="set-exam-level" data-level="${l}" class="${l === level ? "is-active" : ""}">${l}</button>`).join("")}</div>
-      </div>
-      <div class="panel exam-start reveal">
-        <div class="exam-start-icon"><i data-lucide="clipboard-check"></i></div>
-        <div class="exam-start-copy"><h3>${level} 模拟考试</h3><p>30 题 · 35 分钟 · 自动判分并换算 Band 分。</p></div>
-        <button class="btn primary" data-action="start-mock" data-level="${level}"><i data-lucide="play"></i>开始考试</button>
-      </div>
-      ${(player.mockScores || []).length ? `<div class="panel panel-pad reveal" style="margin-top:16px"><h3 style="margin-top:0">最近模拟成绩</h3>${player.mockScores.slice(-5).reverse().map((m) => `<div class="progress-label"><span>${esc(m.level)} · ${esc(m.date)}</span><span>${m.score}% · Band ${m.band.toFixed(1)}</span></div>`).join("")}</div>` : ""}`;
+    const level = state.examLevel, performance = practicePerformance();
+    const scores = state.progress.player.mockScores || [];
+    return `<div class="section-head reveal"><div><h2>综合测验</h2><p>用当前阶段的跨技能题目检查练习情况，找出需要巩固的内容。</p></div></div>
+      <section class="panel practice-overview reveal"><h3>本站练习记录</h3>
+        <p>${performance.attempted ? `累计练习 ${performance.attempted} 题，答对率 ${performance.accuracy}%。` : '还没有练习记录，从一次综合测验开始。'}</p>
+        <p class="practice-disclaimer">成绩仅反映本站题目表现，不换算雅思 Band，也不代表官方测评。</p></section>
+      <div class="filter-bar reveal"><span>测验阶段</span><div class="seg">${["A0","A1","A2","B1","B2","C1","IELTS"].map(l=>`<button data-action="set-exam-level" data-level="${l}" class="${l===level?'is-active':''}">${l}</button>`).join('')}</div></div>
+      <section class="panel exam-start reveal"><div class="exam-start-icon"><i data-lucide="clipboard-check"></i></div><div class="exam-start-copy"><h3>${level} 综合测验</h3><p>30 题 · 35 分钟 · 提交后查看成绩与错题解析。</p></div><button class="btn primary" data-action="start-mock" data-level="${level}" data-motion="capsule">开始测验</button></section>
+      ${scores.length ? `<section class="panel practice-history"><h3>最近测验</h3>${scores.slice(-5).reverse().map(m=>`<div class="progress-label"><span>${esc(m.level)} · ${esc(m.date)}</span><strong>${m.score}%</strong></div>`).join('')}</section>` : ''}`;
   }
 
   function renderSession() {
     const session = state.session;
-    if (!session) return `<div class="panel empty-state"><p>请先选择挑战或模拟考试。</p></div>`;
+    if (!session) return `<div class="panel empty-state"><p>请先选择题型挑战或综合测验。</p></div>`;
+    state.answerMap={};
+    state.currentTest={skill:session.kind,id:`${session.kind}:${session.type}:${session.level}`,checked:!!session.result};
     if (session.result) {
       const r = session.result;
-      const passLine = r.band
-        ? (r.passed ? `已达到目标 Band ${state.progress.target.toFixed(1)}。` : `距离目标 Band ${state.progress.target.toFixed(1)} 还差 ${Math.max(0, state.progress.target - r.band).toFixed(1)}。`)
-        : session.kind === "review" ? "本次做对的题已从错题本移除。" : "继续挑战可以提升熟练度。";
+      const consolidation = session.kind === "consolidation";
+      const hasNext = consolidation && (session.unit || 1) < Math.ceil(getLevelVocab(session.level).length / 20);
+      const needsReview = r.correct < r.total;
+      const answerItems = session.questions.map((question, index) => ({question, index}));
+      const answeredCorrectly = ({question, index}) => isCorrect({
+        type: question.type === 'short-answer' ? 'text' : 'choice',
+        answer: question.answer,
+        accepted: question.accepted || [],
+      }, r.values?.[`p${index}:g0:q0`] || '');
+      answerItems.sort((a, b) => Number(answeredCorrectly(a)) - Number(answeredCorrectly(b)));
+      const passLine = !r.answered ? "本次仅查看解析，没有计入练习次数或 XP。"
+        : session.kind === "review" ? "本次做对的题已从错题本移除，未答和答错的题会保留。"
+        : "未答和答错的题已保存到错题本，可以继续巩固。";
       return `
-        <div class="exam-result panel reveal">
-          <div class="score-orb large"><strong>${r.score}%</strong><span>正确率</span></div>
-          <h2>${r.band ? `预测 Band ${r.band.toFixed(1)}` : session.kind === "review" ? "错题复习完成" : "挑战完成"}</h2>
-          <p>答对 ${r.correct} / ${r.total} 题，获得 ${r.xp} XP。${passLine}</p>
-          <div class="hero-actions">
-            <button class="btn primary" data-action="retry-session"><i data-lucide="rotate-ccw"></i>再来一次</button>
-            <button class="btn ghost" data-action="go" data-view="${session.kind === "mock" ? "exam" : session.kind === "review" ? "review" : "challenges"}"><i data-lucide="arrow-left"></i>返回</button>
+        <div class="exam-result panel reveal${consolidation ? ' consolidation-result' : ''}">
+          <div class="result-summary"><div class="score-orb${consolidation ? '' : ' large'}"><strong>${r.score}%</strong><span>正确率</span></div>
+          <div><h2>${session.kind === "mock" ? "综合测验完成" : session.kind === "review" ? "错题复习完成" : consolidation ? "词汇小测完成" : "挑战完成"}</h2>
+          <p>答对 ${r.correct} / ${r.total} 题 · ${r.xp} XP</p></div></div><p class="completion-note">${passLine}</p>
+          <div class="completion-primary-actions">
+            ${consolidation ? `${needsReview ? '<button class="btn primary" data-action="go" data-view="review">巩固未答与错题</button>' : ''}${hasNext ? `<button class="btn ${needsReview ? 'ghost' : 'primary'}" data-action="vocab-unit-next" data-motion="capsule">下一单元<i data-lucide="arrow-right"></i></button>` : !needsReview ? '<button class="btn primary" data-action="return-vocab" data-motion="back">回到词汇</button>' : ''}` : '<button class="btn primary" data-action="go" data-view="review">复习未答与错题</button>'}
           </div>
-        </div>`;
+          <div class="completion-secondary-actions">
+            <button class="text-link" data-action="retry-session"><i data-lucide="rotate-ccw"></i>再来一次</button>
+            ${consolidation ? `${hasNext || needsReview ? '<button class="text-link" data-action="return-vocab" data-motion="back">回到词汇</button>' : ''}<button class="text-link" data-action="go" data-view="home" data-motion="back">回到今天</button>` : `<button class="text-link" data-action="go" data-view="${session.kind === 'mock' ? 'exam' : session.kind === 'review' ? 'review' : 'challenges'}" data-motion="back"><i data-lucide="arrow-left"></i>返回</button>`}
+          </div>
+        </div><section class="panel questions-panel session-answers"><h3>本次答案与解析</h3>${needsReview ? '<p class="session-answer-hint">先看未答与答错的题，再回顾已答对的题。</p>' : ''}${answerItems.map(({question:q,index:i})=>`<div class="session-item">${q.context?`<details class="session-context"><summary>查看材料</summary><div>${wordify(q.context)}</div></details>`:''}${renderQuestionGroup({type:q.type,instructions:'',questions:[q]},i,0,q.context,q.level)}</div>`).join('')}</section>`;
     }
-    const title = session.kind === "mock" ? `${session.level} 模拟考试` : session.kind === "review" ? "错题复习" : `题型挑战 · ${session.type}`;
+    const title = session.kind === "mock" ? `${session.level} 综合测验` : session.kind === "review" ? "错题复习" : session.kind==='consolidation'?`${session.level} · Unit ${session.unit||state.vocabUnit} 词汇巩固`:`题型挑战 · ${session.type}`;
     return `
       <div class="runner-head reveal">
         <div><h2>${esc(title)}</h2><div class="runner-meta"><span class="tag gold">${session.level}</span><span class="tag">${session.questions.length} 题</span><span class="tag" id="session-timer">${formatClock(session.remaining)}</span></div></div>
@@ -1827,6 +2016,7 @@
     if (state.ai.stepIndex >= scenario.steps.length) {
       reply = "Excellent! You finished this scenario. Let's try a free question: What did you do today?";
       state.ai.stepIndex = 0;
+      state.ai.completed = true;
     } else {
       reply = matched
         ? scenario.steps[state.ai.stepIndex].ai
@@ -1834,7 +2024,7 @@
     }
     const note = feedback.notes.length
       ? `${feedback.notes.join("；")}。可以改成：${feedback.corrected}`
-      : "表达很清楚。试着再加一个原因或例子。";
+      : "可以继续加一个原因或例子。内置练习只检查部分常见表达。";
     return { reply, feedback: note };
   }
 
@@ -1854,6 +2044,8 @@
   }
 
   function rememberAiForm() {
+    const topics = $("#ai-topics");
+    if (topics) state.ai.topicsOpen = topics.open;
     const settingsPanel = $("#view-root details.ai-settings-card");
     if (settingsPanel) state.ai.settingsOpen = settingsPanel.open;
     const fields = $$("#view-root .ai-layout input[id], #view-root .ai-layout select[id], #view-root .ai-layout textarea[id]");
@@ -2085,6 +2277,9 @@
     stopAiListening(true);
     state.ai.scenario = id;
     state.ai.stepIndex = 0;
+    state.ai.completed = false;
+    state.ai.topicsOpen = false;
+    if($("#ai-topics"))$("#ai-topics").open=false;
     const scenario = AI_SCENARIOS[id];
     const first = scenario ? scenario.steps[0].ai : AI_FREE_PROMPTS[0];
     state.ai.messages = [{ role: "ai", text: first, feedback: "" }];
@@ -2114,27 +2309,30 @@
     const speechSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
     const statusLabel = state.ai.status === "listening" ? "Listening" : state.ai.status === "thinking" ? "Thinking" : state.ai.status === "speaking" ? "Speaking" : state.ai.autoMode ? "Realtime on" : "Ready";
     return `
-      <div class="section-head reveal"><div><h2>英语陪练</h2><p>选择一个话题，先用文字开始。也可以打开麦克风练习口语。</p></div><span class="tag teal">内置场景陪练</span></div>
-      <div class="ai-scenario-grid reveal">${scenarios}</div>
+      <div class="section-head reveal"><div><h2>英语陪练</h2><p>${s.mode==='api'?'使用你配置的在线模型练习表达。':'先用一句英语开始；内置场景提供引导和有限纠错。'}</p></div><span class="tag teal">${s.mode==='api'?'在线模型':'场景引导练习'}</span></div>
+      <details class="ai-topics" id="ai-topics" ${state.ai.topicsOpen?'open':''}><summary>更换话题 <span>${esc(scenario?.title || '自由表达')}</span></summary><div class="ai-scenario-grid">${scenarios}</div></details>
       <div class="ai-layout">
         <section class="panel ai-chat-card reveal">
-          <div class="ai-chat-head"><div><strong>${esc(scenario ? scenario.title : "自由对话")}</strong><span>${esc(scenario ? scenario.goal : "练习自由表达，AI 会继续追问。")}</span></div><span class="tag ${state.ai.listening || state.ai.status === "speaking" ? "red" : "teal"}">${statusLabel}</span></div>
+          <div class="ai-chat-head"><div><strong>${esc(scenario ? scenario.title : "自由对话")}</strong><span>${esc(scenario ? scenario.goal : "练习自由表达，内置练习会给出话题提示。")}</span></div><span class="tag ${state.ai.listening || state.ai.status === "speaking" ? "red" : "teal"}">${statusLabel}</span></div>
           <div class="ai-messages" id="ai-messages" aria-live="polite" aria-busy="${state.ai.thinking}">${messages}${state.ai.thinking ? `<div class="ai-message ai"><div class="ai-avatar">AI</div><div class="ai-bubble">${window.IELTSMotion ? window.IELTSMotion.skeleton("陪练正在回复…") : '<span class="typing-dots">正在输入</span>'}</div></div>` : ""}</div>
           <div class="ai-live" id="ai-live-text"></div>
-          ${speechSupported ? "" : `<div class="ai-warning">当前浏览器不支持实时语音识别。可以继续用文字对话，或使用最新版 Edge / Chrome 开启实时语音。</div>`}
           <div class="ai-input-row">
             <button class="ai-mic ${state.ai.listening ? "is-listening" : ""}" id="ai-mic" data-action="ai-toggle-mic" title="开始/停止语音输入"><i data-lucide="mic"></i></button>
             <input id="ai-input" aria-label="英语消息" type="text" value="${esc(draft("ai-input"))}" placeholder="输入英语消息…" autocomplete="off" />
             <button class="btn primary" data-action="ai-send" aria-label="发送消息"><i data-lucide="send"></i></button>
           </div>
+          ${speechSupported ? "" : `<div class="ai-warning">当前浏览器不支持实时语音识别。可以继续用文字对话，或使用最新版 Edge / Chrome 开启实时语音。</div>`}
           <div class="ai-actions">
+            <button class="btn ghost" data-action="ai-hint"><i data-lucide="lightbulb"></i>给我一句提示</button>
+          </div>
+          <details class="ai-extra-actions"><summary>语音与其他操作</summary><div class="ai-actions">
             ${state.ai.autoMode || state.ai.listening
               ? `<button class="btn primary" data-action="ai-stop-realtime"><i data-lucide="square"></i>停止实时对话</button>`
               : `<button class="btn primary" data-action="ai-start-realtime" ${speechSupported ? "" : "disabled"}><i data-lucide="radio"></i>开始实时语音对话</button>`}
-            <button class="btn ghost" data-action="ai-hint"><i data-lucide="lightbulb"></i>提示我会怎么说</button>
             <button class="btn ${state.ai.autoMode ? "teal" : "ghost"}" data-action="ai-toggle-auto"><i data-lucide="repeat"></i>自动对话</button>
             <button class="btn ghost" data-action="ai-reset"><i data-lucide="rotate-ccw"></i>重新开始</button>
-          </div>
+          </div></details>
+          ${state.ai.completed ? `<section class="ai-completion" tabindex="-1"><h3>这个话题练完了</h3><p>你完成了 ${state.ai.messages.filter(m=>m.role==='user').length} 次表达。回看对话里的修改建议，再试着用自己的话说一遍。</p><button class="btn ghost" data-action="ai-summary">整理本次表达</button></section>` : ''}
           <div class="ai-status" id="ai-status">${state.ai.listening ? "正在听你说英语…" : state.ai.autoMode ? "自动对话已开启，点麦克风开始" : "点麦克风开始实时英语对话"}</div>
         </section>
         <details class="panel ai-settings-card reveal" ${state.ai.settingsOpen ? "open" : ""}><summary>陪练设置</summary><div class="ai-settings-content">
@@ -2164,7 +2362,7 @@
             <div class="account-profile"><div class="account-avatar">${esc(initial)}</div><div><h3>${esc(state.progress.profile.displayName || user.name || "学习者")}</h3><span>${esc(user.email)}</span></div></div>
             <div class="account-stats">
               <div><strong>Lv.${state.progress.player.level}</strong><span>玩家等级</span></div>
-              <div><strong>${state.progress.player.estimatedBand.toFixed(1)}</strong><span>预测 Band</span></div>
+              <div><strong>${practicePerformance().accuracy === null ? "—" : practicePerformance().accuracy + "%"}</strong><span>本站答对率</span></div>
               <div><strong>${ensureToday().words}</strong><span>今日单词</span></div>
               <div><strong>${totalQuestions}</strong><span>累计做题</span></div>
             </div>
@@ -2177,14 +2375,14 @@
               <button class="btn ghost" data-action="logout-account"><i data-lucide="log-out"></i>退出登录</button>
             </div>
           </section>
-          <aside class="panel account-cloud reveal">
-            <h3>云端同步设置</h3>
-            <p>本地账户只保存在这台设备。要跨手机和电脑同步，请填写你的 Supabase 项目配置，然后使用云端邮箱账户登录。</p>
+          <details class="panel account-cloud reveal advanced-cloud"><summary>高级连接设置</summary><div class="advanced-cloud-content">
+            <h3>更换云端服务</h3>
+            <p>仅在自行部署或更换服务时修改。普通学习者使用站点已有服务登录即可。</p>
             <label>Supabase URL<input id="supabase-url-settings" value="${esc(cloud.url)}" placeholder="https://xxxx.supabase.co" /></label>
             <label>Supabase Anon Key<input id="supabase-anon-key-settings" type="password" value="${esc(cloud.anonKey)}" placeholder="eyJ..." /></label>
             <button class="btn ghost" data-action="save-cloud-settings"><i data-lucide="save"></i>保存云端配置</button>
             <p class="account-note">云端登录使用 Supabase 官方 Auth 接口，密码不会保存在本网站。当前账户类型：${user.mode === "supabase" ? "Supabase 云端" : "本机浏览器"}。</p>
-          </aside>
+          </div></details>
         </div>
         ${isAdminUser(user) ? renderAdminPanel() : ""}
         ${downloads}`;
@@ -2195,6 +2393,7 @@
     const cloudReady = cloudConfigured();
     return `
       <div class="section-head reveal"><div><h2>邮箱注册登录</h2><p>新注册默认保存到云端，适合跨浏览器和跨设备使用。</p></div><div class="section-head-actions"><button class="btn ghost" data-action="go" data-view="settings"><i data-lucide="settings"></i>设置</button><span class="tag ${cloudReady ? "teal" : "gold"}">${cloudReady ? "默认云端存储" : "云端待配置"}</span></div></div>
+      <section class="guest-backup"><p>当前进度保存在这台设备。可以先备份，登录后再同步。</p><div><button class="btn ghost" data-action="export-progress">导出学习进度</button><label class="btn ghost file-button">导入学习进度<input type="file" id="import-progress" accept="application/json" hidden /></label></div></section>
       <div class="account-warning reveal"><strong>${cloudReady ? "云端账户可在其他浏览器登录" : "为什么换浏览器登录不上？"}</strong><p>${cloudReady ? "注册后学习进度会同步到云端，在手机或另一台电脑上使用同一邮箱即可登录。" : "本地账户只保存在当前浏览器。管理员配置一次云端服务后，所有浏览器都会自动使用同一云端账户；也可以先切换为“仅本机”。"}</p></div>
       <div class="account-layout single">
         <section class="panel account-card reveal">
@@ -2212,7 +2411,7 @@
           </div>
           <p class="account-note">${cloudReady ? "云端账户通过 Supabase Auth 保存，支持跨浏览器登录和进度同步；本机账户只保存当前浏览器。" : "当前网站还没有配置云端服务。普通用户可以先注册本机账户，管理员展开下方设置完成一次配置即可。"}</p>
           <details class="cloud-setup-details">
-            <summary>${cloudReady ? "查看或更换云端服务" : "管理员配置云端服务"}</summary>
+            <summary>${cloudReady ? "高级连接设置" : "管理员配置云端服务"}</summary>
             <div class="cloud-setup-body">
               <label>Supabase URL<input id="supabase-url-settings" value="${esc(cloud.url)}" placeholder="https://xxxx.supabase.co" /></label>
               <label>Supabase Anon Key<input id="supabase-anon-key-settings" type="password" value="${esc(cloud.anonKey)}" placeholder="eyJ..." /></label>
@@ -2312,6 +2511,7 @@
           <div class="setting-info"><strong>错题记录</strong><span>${(state.progress.wrongAnswers || []).length} 道待复习</span></div>
           <p class="account-note">朗读设置按浏览器保存；如果使用云端账户，学习进度仍按账户同步。</p>
         </section>
+        ${window.IELTSOffline ? window.IELTSOffline.markup() : ''}
       </div>`;
   }
 
@@ -2368,16 +2568,9 @@
       const text = await file.text();
       const data = JSON.parse(text);
       if (!data.progress) throw new Error("invalid file");
-      const defaults = defaultProgress();
-      state.progress = {
-        ...defaults,
-        ...data.progress,
-        stats: { ...defaults.stats, ...(data.progress.stats || {}) },
-        player: { ...defaults.player, ...(data.progress.player || {}) },
-        profile: { ...defaults.profile, ...(data.progress.profile || {}) },
-        daily: { ...defaults.daily, ...(data.progress.daily || {}) },
-        vocab: { ...defaults.vocab, ...(data.progress.vocab || {}) },
-      };
+      if(typeof data.progress!=="object" || Array.isArray(data.progress))throw new Error("invalid progress");
+      stopSessionTimer();state.session=null;state.currentTest=null;state.answerMap={};state.vocabDeckKey="";
+      state.progress = normalizeProgress(data.progress);
       save();
       render();
       toast("学习进度导入成功");
@@ -2481,7 +2674,9 @@
   function renderListeningTest(id) {
     const test = findTest("listening", id);
     if (!test) return `<div class="panel empty-state"><p>未找到该套题</p></div>`;
-    state.currentTest = { skill: "listening", id, section: 0 };
+    const section=Math.min(Math.max(0,state.listeningSection||0),test.sections.length-1);
+    state.listeningSection=section;
+    state.currentTest = { skill: "listening", id, section };
     state.currentTest.checked = false;
     state.answerMap = {};
     return `
@@ -2490,9 +2685,9 @@
         <button class="btn ghost" data-action="go" data-view="practice"><i data-lucide="arrow-left"></i>返回题库</button>
       </div>
       <div class="section-tabs reveal">
-        ${test.sections.map((s, i) => `<button data-action="listen-section" data-index="${i}" class="${i === 0 ? "is-active" : ""}">Section ${s.number} · ${esc(s.title)}</button>`).join("")}
+        ${test.sections.map((s, i) => `<button data-action="listen-section" data-index="${i}" class="${i === section ? "is-active" : ""}">Section ${s.number} · ${esc(s.title)}</button>`).join("")}
       </div>
-      <div id="listen-section" class="panel panel-pad reveal">${renderListeningSection(test, 0)}</div>`;
+      <div id="listen-section" class="panel panel-pad reveal">${renderListeningSection(test, section)}</div>`;
   }
 
   function renderListeningSection(test, index) {
@@ -2548,8 +2743,8 @@
     if (q.type === "true-false" || q.type === "yes-no") {
       const qpath = `${base}`;
       state.answerMap[qpath] = { ...shared, type: "choice", answer: q.answer, accepted: q.accepted || [] };
-      const buttons = q.options.map((opt) => `<button data-action="select-option" data-qpath="${qpath}" data-value="${esc(opt)}">${esc(opt)}</button>`).join("");
-      return `<div class="question"><div class="q-text"><span class="q-no">${label}</span><span>${wordify(q.text)}</span></div><div class="q-options">${buttons}</div><div class="q-feedback-slot" data-feedback="${qpath}"></div></div>`;
+      const buttons = q.options.map((opt) => `<button data-action="select-option" data-qpath="${qpath}" data-value="${esc(opt)}" aria-pressed="false">${esc(opt)}</button>`).join("");
+      return `<div class="question"><div class="q-text"><span class="q-no">${label}</span><span>${wordify(q.text)}</span></div><div class="q-options" role="group" aria-label="${esc(q.text || "第"+label+"题")}">${buttons}</div><div class="q-feedback-slot" data-feedback="${qpath}"></div></div>`;
     }
 
     if (q.type === "multiple-choice" || q.type === "matching-letters" || q.type === "matching-headings") {
@@ -2560,9 +2755,9 @@
         if (q.type === "matching-headings") value = String(opt).split(".")[0].trim();
         if (q.type === "multiple-choice" && /^[A-F][.)]/.test(String(opt))) value = String(opt)[0];
         if (q.type === "matching-letters") value = String(opt);
-        return `<button data-action="select-option" data-qpath="${qpath}" data-value="${esc(value)}">${esc(opt)}</button>`;
+        return `<button data-action="select-option" data-qpath="${qpath}" data-value="${esc(value)}" aria-pressed="false">${esc(opt)}</button>`;
       }).join("");
-      return `<div class="question"><div class="q-text"><span class="q-no">${label}</span><span>${wordButton}${wordify(q.text)}</span></div><div class="q-options">${options}</div><div class="q-feedback-slot" data-feedback="${qpath}"></div></div>`;
+      return `<div class="question"><div class="q-text"><span class="q-no">${label}</span><span>${wordButton}${wordify(q.text)}</span></div><div class="q-options" role="group" aria-label="${esc(q.text || "第"+label+"题")}">${options}</div><div class="q-feedback-slot" data-feedback="${qpath}"></div></div>`;
     }
 
     if (q.type === "table-completion") {
@@ -2570,7 +2765,7 @@
         const qpath = `${base}:g${gi}`;
         if (!gap.blank) return `<span style="color:var(--muted)">${esc(gap.text)}</span>`;
         state.answerMap[qpath] = { ...shared, type: "text", answer: gap.answer, accepted: [gap.answer] };
-        return `<span>${esc(gap.text)} <input class="q-input" data-qpath="${qpath}" /><span class="q-feedback-slot inline" data-feedback="${qpath}"></span></span>`;
+        return `<span>${esc(gap.text)} <input class="q-input" aria-label="${esc(q.text || "第"+label+"题")} 填写答案" data-qpath="${qpath}" /><span class="q-feedback-slot inline" data-feedback="${qpath}"></span></span>`;
       }).join(" <span style=\"color:var(--line)\">·</span> ");
       return `<div class="question"><div class="q-text"><span class="q-no">${label}</span><span>${wordify(q.text)}</span></div><div style="font-size:13px;line-height:2">${cells}</div></div>`;
     }
@@ -2578,7 +2773,7 @@
     // short-answer and sentence-completion fall here
     const qpath = `${base}`;
     state.answerMap[qpath] = { ...shared, type: "text", answer: q.answer, accepted: q.accepted || [] };
-    return `<div class="question"><div class="q-text"><span class="q-no">${label}</span><span>${wordify(q.text)}</span></div><input class="q-input" data-qpath="${qpath}" /><div class="q-feedback-slot" data-feedback="${qpath}"></div></div>`;
+    return `<div class="question"><div class="q-text"><span class="q-no">${label}</span><span>${wordify(q.text)}</span></div><input class="q-input" aria-label="${esc(q.text || "第"+label+"题")} 填写答案" data-qpath="${qpath}" /><div class="q-feedback-slot" data-feedback="${qpath}"></div></div>`;
   }
 
   function renderSummaryGroup(group, passageIdx, groupIdx, context, level) {
@@ -2590,7 +2785,7 @@
       const gap = gaps[gapIndex] || {};
       state.answerMap[qpath] = { type: "text", answer: gap.answer, accepted: [gap.answer], context: context || "", level: level || "", explain: "", question: group.text || "", word: "", phonetic: "", options: [] };
       gapIndex += 1;
-      return `<input class="q-input" data-qpath="${qpath}" style="width:110px;margin:0 3px" /><span class="q-feedback-slot inline" data-feedback="${qpath}"></span>`;
+      return `<input class="q-input" aria-label="摘要第 ${gapIndex} 空" data-qpath="${qpath}" style="width:110px;margin:0 3px" /><span class="q-feedback-slot inline" data-feedback="${qpath}"></span>`;
     });
     return `
       <div class="question-group">
@@ -2664,15 +2859,15 @@
 
   function renderVocab() {
     const levels = ["A0", "A1", "A2", "B1", "B2", "C1"];
-    const vocab = getLevelVocab(state.vocabLevel);
-    if (!vocab.length) return `<div class="panel empty-state"><p>暂无词汇</p></div>`;
     const unitSize = 20;
-    const unitCount = Math.max(1, Math.ceil(vocab.length / unitSize));
+    const unitCount = Math.max(1, Math.ceil(getLevelVocab(state.vocabLevel).length / unitSize));
     state.vocabUnit = Math.min(Math.max(1, state.vocabUnit || 1), unitCount);
-    if (state.vocabDeck.length === 0 || state.vocabDeckKey !== `${state.vocabLevel}:${state.vocabUnit}`) {
+    if (state.vocabDeckKey !== (state.vocabReview?'review':`${state.vocabLevel}:${state.vocabUnit}`)) {
       resetVocabDeck();
     }
-    const unitStart = (state.vocabUnit - 1) * unitSize;
+    const vocab=activeVocabWords();
+    if(!state.vocabDeck.length)return renderVocabComplete();
+    const unitStart = state.vocabReview?0:(state.vocabUnit - 1) * unitSize;
     const unitWords = vocab.slice(unitStart, unitStart + unitSize);
     const unitKnown = unitWords.filter((item) => state.progress.vocab.known.includes(`${state.vocabLevel}:${item.w}`)).length;
     const idx = state.vocabDeck[Math.min(state.vocabIndex, state.vocabDeck.length - 1)];
@@ -2689,10 +2884,10 @@
     const knownCount = state.progress.vocab.known.length;
     return `
       <div class="section-head reveal">
-        <div><h2>分级词汇卡片</h2><p>点击单词或喇叭听发音，点击卡片空白处翻转释义。</p></div>
+        <div><h2>${state.vocabReview?'到期词汇复习':'分级词汇卡片'}</h2><p>先回忆，再翻卡。还不熟的词会继续出现。</p></div>
         <div class="tag teal">已掌握 ${knownCount} 个</div>
       </div>
-      <div class="filter-bar reveal" style="margin-bottom:14px">
+      ${state.vocabReview?'':`<div class="filter-bar reveal" style="margin-bottom:14px">
         <span style="font-size:12px;color:var(--muted)">阶段</span>
         <div class="seg">${levels.map((level) => `<button data-action="set-vocab-level" data-level="${level}" class="${level === state.vocabLevel ? "is-active" : ""}">${level}</button>`).join("")}</div>
       </div>
@@ -2701,11 +2896,11 @@
         <div><strong>Unit ${state.vocabUnit}</strong><span>${unitStart + 1}–${unitStart + unitWords.length} · 已掌握 ${unitKnown}/${unitWords.length}</span></div>
         <button class="btn ghost" data-action="vocab-unit-next" ${state.vocabUnit >= unitCount ? "disabled" : ""}>下一单元<i data-lucide="chevron-right"></i></button>
       </div>
-      <div class="card-deck reveal">
+      `}<div class="card-deck reveal">
         <div class="flash-card" data-action="flip-card">
           <div class="flash-face front">
-            <span class="flash-pos">${esc(state.vocabLevel)} ${card.pos ? "· " + esc(card.pos) : ""}</span>
-            <div class="flash-word speakable" data-action="speak-word" data-word="${esc(card.w)}" title="点击听发音">${esc(card.w)} <i data-lucide="volume-2"></i></div>
+            <span class="flash-pos">${esc(card.studyLevel||state.vocabLevel)} ${card.pos ? "· " + esc(card.pos) : ""}</span>
+            <button class="flash-word speakable word-audio-button" aria-label="朗读 ${esc(card.w)}" data-action="speak-word" data-word="${esc(card.w)}" title="点击听发音">${esc(card.w)} <i data-lucide="volume-2"></i></button>
             ${card.p ? `<div class="flash-phonetic">${esc(card.p)}</div>` : ""}
             <div class="flash-front-hint">先回忆意思，再翻转查看释义和例句</div>
           </div>
@@ -2720,12 +2915,15 @@
             <div class="flash-example-tip">例句里的英文单词也可以点击查翻译</div>
           </div>
         </div>
-        <div class="deck-actions">
+        <div class="vocab-secondary-actions">
           <button class="btn ghost" data-action="flip-card"><i data-lucide="refresh-cw"></i>翻转卡片</button>
+          <button class="btn ghost" data-action="lookup-word" data-word="${esc(card.w)}">查当前单词</button>
+        </div>
+        <div class="deck-actions vocab-primary-actions" aria-label="记录当前单词掌握情况">
           <button class="btn ghost" data-action="vocab-again"><i data-lucide="rotate-ccw"></i>还不熟</button>
           <button class="btn primary" data-action="vocab-known"><i data-lucide="check"></i>认识了</button>
         </div>
-        <div class="deck-progress">${state.vocabLevel} · Unit ${state.vocabUnit} · ${pos} / ${total} · 单词可点击发音</div>
+        <div class="deck-progress">${state.vocabReview?'到期复习':`${state.vocabLevel} · Unit ${state.vocabUnit}`} · 还剩 ${total} 词</div>
       </div>`;
   }
 
@@ -2794,7 +2992,7 @@
         </div>
         <div class="about-support">
           <img src="assets/vega-support.jpg" alt="Vega 赞赏码" />
-          <div><strong>作者：Vega</strong><p>如果你觉得可以 可以支持一下我的作品。未经授权禁止外传，感谢支持。</p><button class="btn primary" data-action="open-support"><i data-lucide="heart"></i>打开赞赏码</button></div>
+          <div><strong>作者：Vega</strong><p>如果你觉得可以 可以支持一下我的作品。未经允许禁止用于一切商业用途，感谢支持。</p><button class="btn primary" data-action="open-support"><i data-lucide="heart"></i>打开赞赏码</button></div>
         </div>
         <p style="margin-top:18px;color:var(--muted);font-size:12px">学习记录仅保存在你的浏览器 localStorage，不会上传到任何服务器。</p>
       </div>`;
@@ -2845,6 +3043,34 @@
     if (!target) return;
     const action = target.dataset.action;
 
+    if(action==='retry-bank'){render();return;}
+
+    if(action==='save-study-plan'){
+      const level=$('#plan-level').value,minutes=Number($('#plan-minutes').value);
+      state.progress.studyPlan={level,minutes,configured:true};state.vocabLevel=level;state.practiceLevel=level;state.examLevel=level;state.vocabUnit=1;state.vocabDeckKey='';
+      state.progress.resume=null;save();render();toast('学习安排已保存，随时可以调整');return;
+    }
+    if(action==='resume-study'){
+      if(state.progress.resume){history.pushState({ielts:true},'',state.progress.resume.route);applyRoute();}return;
+    }
+    if(action==='start-vocab-review'){
+      state.vocabReview=true;state.vocabDeckKey='';setView('vocab',null,true);return;
+    }
+    if(action==='repeat-vocab'){
+      resetVocabDeck(true);render();return;
+    }
+    if(action==='vocab-check'){startVocabCheck();return;}
+    if(action==='return-vocab'){
+      state.vocabLevel=state.session?.level||state.vocabLevel;state.vocabUnit=state.session?.unit||state.vocabUnit;
+      state.vocabReview=false;state.vocabDeckKey="";setView("vocab");return;
+    }
+    if (action === "ai-summary") {
+      const messages=state.ai.messages.filter(m=>m.role==='ai'&&m.feedback);
+      const notes=messages.slice(-3).map(m=>m.feedback);
+      const box=$(".ai-completion");
+      if(box){box.innerHTML=`<h3>本次表达回顾</h3><p>已练习 ${state.ai.messages.filter(m=>m.role==='user').length} 句。下面是这次收到的建议：</p><ul>${notes.map(n=>`<li>${esc(n)}</li>`).join('')}</ul><button class="btn ghost" data-action="ai-reset">再练一次</button>`;box.focus();}
+      return;
+    }
     if (action === "go") {
       setView(target.dataset.view, target.dataset.id || null);
       return;
@@ -3206,31 +3432,37 @@
       return;
     }
     if (action === "submit-session") {
-      submitSession();
+      requestSubmission(true);
       return;
     }
     if (action === "exit-session") {
       stopSessionTimer();
-      state.session = null;
+      state.progress.sessionDraft=null;
+      state.session = null;save();
       setView("home");
       return;
     }
     if (action === "retry-session") {
       const session = state.session;
-      if (session) startSession(session.kind, session.type, session.level);
+      if(session?.kind==="consolidation"){state.vocabLevel=session.level;state.vocabUnit=session.unit||1;startVocabCheck();}
+      else if(session?.kind==="review")startReviewSession();
+      else if (session) startSession(session.kind, session.type, session.level);
       return;
     }
     if (action === "open-test") {
       const skill = target.dataset.skill;
+      if(skill==='listening')state.listeningSection=0;
       setView(skill === "vocab" ? "quiz" : skill, target.dataset.id);
       return;
     }
     if (action === "listen-section") {
+      saveAnswerDraft();
       const test = findTest("listening", state.currentTest.id);
       const index = Number(target.dataset.index);
-      state.currentTest.section = index;
+      state.currentTest.section = index;state.listeningSection=index;
       $$(".section-tabs button").forEach((b) => b.classList.toggle("is-active", Number(b.dataset.index) === index));
       $("#listen-section").innerHTML = renderListeningSection(test, index);
+      restoreAnswerDraft();routeMode="push";syncRoute();
       refreshIcons();
       return;
     }
@@ -3265,14 +3497,30 @@
     if (action === "select-option") {
       if (state.currentTest && state.currentTest.checked) return;
       const qpath = target.dataset.qpath;
-      $$(`.q-options button[data-qpath="${qpath}"]`).forEach((b) => b.classList.remove("selected"));
+      $$(`.q-options button[data-qpath="${qpath}"]`).forEach((b) => {b.classList.remove("selected");b.setAttribute("aria-pressed","false");});
       target.classList.add("selected");
+      target.setAttribute("aria-pressed","true");
+      saveAnswerDraft();
       updateLiveScore();
       return;
     }
     if (action === "check-answers") {
-      checkAnswers();
+      requestSubmission();
       return;
+    }
+    if (action === "confirm-submission") {
+      $(".submission-notice")?.remove();
+      if (target.dataset.session === "true") submitSession(); else checkAnswers();
+      return;
+    }
+    if (action === "continue-answering") {
+      $(".submission-notice")?.remove();
+      const missing = Object.entries(state.answerMap).find(([key,meta])=>!selectedAnswer(key,meta));
+      if (missing) $(`[data-qpath="${missing[0]}"]`)?.focus();
+      return;
+    }
+    if (action === "retry-practice") {
+      delete state.progress.answers[answerDraftKey()]; save(); render(); return;
     }
     if (action === "flip-card") {
       $(".flash-card").classList.toggle("flipped");
@@ -3294,7 +3542,7 @@
     if (action === "set-vocab-level") {
       state.vocabLevel = target.dataset.level;
       state.vocabUnit = 1;
-      resetVocabDeck();
+      state.vocabDeckKey = '';
       render();
       return;
     }
@@ -3305,10 +3553,16 @@
       return;
     }
     if (action === "vocab-unit-next") {
+      const fromConsolidation = state.view === 'session' && state.session?.kind === 'consolidation';
+      if (fromConsolidation) {
+        state.vocabLevel = state.session.level;
+        state.vocabUnit = state.session.unit || 1;
+        state.vocabReview = false;
+      }
       const vocab = getLevelVocab(state.vocabLevel);
       state.vocabUnit = Math.min(Math.ceil(vocab.length / 20), state.vocabUnit + 1);
       resetVocabDeck();
-      render();
+      if (fromConsolidation) setView('vocab'); else render();
       return;
     }
     if (action === "vocab-again") {
@@ -3354,109 +3608,87 @@
     if (scoreEl) scoreEl.innerHTML = `已答 <strong>${Math.min(answered, total)}</strong> / ${total} 题`;
   }
 
-  function checkAnswers() {
-    if (state.currentTest && state.currentTest.checked) {
-      toast("已核对过答案，请进入下一题");
-      return;
-    }
-    let correct = 0;
-    let total = 0;
-    const statSkill = state.currentTest.statSkill || (state.currentTest.skill === "reading"
-      ? "reading"
-      : state.currentTest.skill === "listening"
-        ? "listening"
-        : state.currentTest.skill === "writing"
-          ? "writing"
-          : "vocab");
+  function selectedAnswer(qpath, meta) {
+    if (meta.type === "choice") return $(`.q-options button[data-qpath="${qpath}"].selected`)?.dataset.value || "";
+    return $(`input[data-qpath="${qpath}"]`)?.value.trim() || "";
+  }
 
-    Object.keys(state.answerMap).forEach((qpath) => {
-      const meta = state.answerMap[qpath];
-      total += 1;
-      let selected = "";
-      let selectedEl = null;
-      if (meta.type === "choice") {
-        selectedEl = $(`.q-options button[data-qpath="${qpath}"].selected`);
-        selected = selectedEl ? selectedEl.dataset.value : "";
-      } else {
-        const input = $(`input[data-qpath="${qpath}"]`);
-        selectedEl = input;
-        selected = input ? input.value : "";
+  function requestSubmission(session = false) {
+    if (state.currentTest?.checked || state.session?.result && session) return;
+    const missing = Object.entries(state.answerMap).filter(([key, meta]) => !selectedAnswer(key, meta)).length;
+    if (!missing) return session ? submitSession() : checkAnswers();
+    const row = $("#view-root .check-row");
+    if (!row) return;
+    $(".submission-notice")?.remove();
+    const total = Object.keys(state.answerMap).length;
+    row.insertAdjacentHTML("beforebegin", `<section class="submission-notice" role="status"><p><strong>还有 ${missing} 题未作答</strong></p><p>${missing===total?'可以先返回答题，或只查看解析；全空提交不计成绩和 XP。':'继续提交将按整套题计分，未答题会保留到错题本。'}</p><div><button class="btn ghost" data-action="continue-answering">返回答题</button><button class="btn primary" data-action="confirm-submission" data-session="${session}">${missing===total?'只查看解析':'提交并查看解析'}</button></div></section>`);
+    $(".submission-notice").scrollIntoView({block:"nearest"});
+    $('[data-action="continue-answering"]').focus({preventScroll:true});
+  }
+
+  function showAnswerFeedback(values) {
+    Object.entries(state.answerMap).forEach(([qpath,meta])=>{
+      const selected=String(values[qpath]||'').trim(),ok=!!selected&&isCorrect(meta,selected);
+      $$(`.q-options button[data-qpath="${qpath}"]`).forEach(button=>{
+        button.disabled=true;
+        button.classList.toggle('correct',normalize(button.dataset.value)===normalize(meta.answer));
+        button.classList.toggle('wrong',button.dataset.value===selected&&!ok);
+      });
+      const input=$(`input[data-qpath="${qpath}"]`);
+      if(input){
+        input.readOnly=true;
+        input.classList.remove('correct','wrong','unanswered');
+        if(selected)markElement(input,ok);else input.classList.add('unanswered');
       }
-      const ok = isCorrect(meta, selected);
-      if (ok) correct += 1;
-      if (meta.type === "choice") {
-        const buttons = $$(`.q-options button[data-qpath="${qpath}"]`);
-        if (selected) {
-          buttons.forEach((btn) => {
-            if (normalize(btn.dataset.value) === normalize(meta.answer)) btn.classList.add("correct");
-          });
-          if (selectedEl && !ok) selectedEl.classList.add("wrong");
-        }
-      } else if (selectedEl) {
-        markElement(selectedEl, ok);
-      }
-      const slot = $(`[data-feedback="${qpath}"]`);
-      if (slot) {
-        if (!selected) {
-          slot.className = "q-feedback-slot";
-          slot.innerHTML = "";
-        } else {
-          slot.className = `q-feedback-slot ${ok ? "ok" : "no"}`;
-          slot.innerHTML = buildExplanation(meta, ok);
-        }
-      }
-      if (selected && state.currentTest.skill !== "review") {
-        const wrongId = `${statSkill}:${state.currentTest.id}:${qpath}`;
-        const wrongList = state.progress.wrongAnswers || [];
-        if (!ok) {
-          const record = {
-            id: wrongId,
-            skill: statSkill,
-            testId: state.currentTest.id,
-            qpath,
-            question: (meta.question || "").slice(0, 800),
-            answer: meta.answer || "",
-            accepted: meta.accepted || [],
-            options: meta.options || [],
-            type: meta.type,
-            context: (meta.context || "").slice(0, 5000),
-            explanation: meta.explain || `正确答案是：${meta.answer || ""}`,
-            selected,
-            timestamp: Date.now(),
-          };
-          const existing = wrongList.findIndex((item) => item.id === wrongId);
-          if (existing >= 0) wrongList[existing] = record;
-          else wrongList.push(record);
-          state.progress.wrongAnswers = wrongList.slice(-200);
-        } else {
-          state.progress.wrongAnswers = wrongList.filter((item) => item.id !== wrongId);
-        }
+      const slot=$(`[data-feedback="${qpath}"]`);
+      if(slot){
+        const answerOption=(meta.options||[]).find(option=>normalize(String(option).split(/[.)]/)[0])===normalize(meta.answer));
+        const answer=answerOption||meta.answer||'';
+        slot.className=`q-feedback-slot ${!selected?'unanswered':ok?'ok':'no'}`;
+        slot.innerHTML=`<div class="answer-result"><strong>${!selected?'未作答':ok?'回答正确':'回答有误'}</strong><span>${ok?'答案':'正确答案'}：${esc(answer)}</span></div><details class="answer-explanation"><summary>查看解析</summary><div class="answer-explanation-content">${buildExplanation(meta,ok)}</div></details>`;
       }
     });
+  }
 
-    const score = total ? Math.round((correct / total) * 100) : 0;
-    const stat = state.progress.stats[statSkill];
-    stat.attempted += total;
-    stat.correct += correct;
-    state.progress.stats[statSkill] = stat;
-    state.progress.lastScore[`${statSkill}:${state.currentTest.id}`] = score;
-    state.currentTest.checked = true;
-    touchToday();
-    recordDailyQuestions(total);
-    recordDailyTest();
-    addXp(correct * 10 + 15);
-    state.progress.player.estimatedBand = estimateBand();
-    save();
+  function showPracticeResult(result) {
+    const scoreEl=$('#live-score');
+    if(scoreEl)scoreEl.innerHTML=`得分 <strong>${result.correct}</strong> / ${result.total} · ${result.score}%${!result.answered?' · 仅查看解析':''}`;
+    const submit=$('[data-action="check-answers"]');
+    if(submit){submit.disabled=true;submit.textContent='已核对答案';}
+    if(state.view!=='session'&&!$('[data-action="retry-practice"]'))$('.check-row')?.insertAdjacentHTML('beforeend','<button class="btn ghost" data-action="retry-practice">重新练习</button><button class="btn ghost" data-action="go" data-view="review">复习未答与错题</button>');
+  }
 
-    const scoreEl = $("#live-score");
-    if (scoreEl) scoreEl.innerHTML = `得分 <strong>${correct}</strong> / ${total} · ${score}%`;
-    if (window.IELTSMotion) {
-      if(scoreEl)window.IELTSMotion.revealState(scoreEl);
-      $$(".q-feedback").forEach(el=>window.IELTSMotion.revealState(el));
+  function checkAnswers() {
+    if(!state.currentTest || state.currentTest.checked)return;
+    let correct=0,answered=0;
+    const values={},total=Object.keys(state.answerMap).length;
+    const statSkill=state.currentTest.statSkill||(['reading','listening','writing'].includes(state.currentTest.skill)?state.currentTest.skill:'vocab');
+    Object.entries(state.answerMap).forEach(([qpath,meta])=>{
+      const selected=selectedAnswer(qpath,meta).trim();values[qpath]=selected;
+      if(selected)answered+=1;
+      const ok=!!selected&&isCorrect(meta,selected);if(ok)correct+=1;
+      if(state.currentTest.skill==='review')return;
+      const wrongId=`${statSkill}:${state.currentTest.id}:${qpath}`,wrongList=state.progress.wrongAnswers;
+      if(!ok){
+        const record={id:wrongId,skill:statSkill,testId:state.currentTest.id,qpath,question:(meta.question||'').slice(0,800),answer:meta.answer||'',accepted:meta.accepted||[],options:meta.options||[],type:meta.type,context:(meta.context||'').slice(0,5000),explanation:meta.explain||`正确答案是：${meta.answer||''}`,selected,timestamp:Date.now()};
+        const existing=wrongList.findIndex(item=>item.id===wrongId);
+        if(existing>=0)wrongList[existing]=record;else wrongList.push(record);
+        state.progress.wrongAnswers=wrongList.slice(-200);
+      }else state.progress.wrongAnswers=wrongList.filter(item=>item.id!==wrongId);
+    });
+    const score=total?Math.round(correct/total*100):0;
+    if(answered){
+      const stat=state.progress.stats[statSkill];stat.attempted+=total;stat.correct+=correct;
+      state.progress.lastScore[`${statSkill}:${state.currentTest.id}`]=score;
+      touchToday();recordDailyQuestions(answered);recordDailyTest();addXp(correct*10+15);
     }
-    renderTarget();
-    toast(total ? `核对完成：${correct}/${total} 题正确` : "没有可核对的答案");
-    return { correct, total, score };
+    state.currentTest.checked=true;
+    const result={correct,total,score,answered,skipped:total-answered,values};
+    state.progress.answers[answerDraftKey()]={submitted:true,result};
+    showAnswerFeedback(values);showPracticeResult(result);save();renderTarget();
+    if(window.IELTSMotion){const el=$('#live-score');if(el)window.IELTSMotion.revealState(el);}
+    toast(answered?`核对完成：${correct}/${total} 题正确`:'已显示解析，本次不计成绩和 XP');
+    return result;
   }
 
   function findClue(context, answer) {
@@ -3471,7 +3703,7 @@
   function buildExplanation(meta, ok) {
     const answer = meta.answer || "";
     if (meta.explain) {
-      return `<strong>${ok ? "正确" : "需要再看一次"}</strong><br>${esc(meta.explain)}`;
+      return esc(meta.explain);
     }
     let tip = "";
     if (meta.question && meta.question.includes("最接近")) tip = "词汇题先看词性和中文释义，再排除意思差距最大的选项。";
@@ -3479,7 +3711,7 @@
     else tip = "填空题注意词数限制、单复数和拼写。";
     const clue = findClue(meta.context, answer);
     const correctLine = ok ? "你的答案正确。" : `正确答案是：${answer}。`;
-    return `<strong>${ok ? "正确" : "需要再看一次"}</strong><br>${esc(correctLine)} ${esc(tip)}${clue ? `<br>${esc(clue)}` : ""}`;
+    return `${esc(correctLine)} ${esc(tip)}${clue ? `<br>${esc(clue)}` : ""}`;
   }
 
   function isCorrect(meta, selected) {
@@ -3523,40 +3755,108 @@
     }
   }
 
+  function renderVocabComplete() {
+    const review=state.vocabReview,session=state.vocabSession,remaining=dueVocabKeys().length;
+    const unitCount=Math.ceil(getLevelVocab(state.vocabLevel).length/20),hasNext=state.vocabUnit<unitCount;
+    const title=review?(session?.known?'这一组复习完成了':'今天没有到期单词'):hasNext?'这一组学完了':'这个阶段的词汇学完了';
+    return `<section class="vocab-complete panel"><i data-lucide="circle-check" aria-hidden="true"></i><h2>${title}</h2><p>${review?`已复习 ${session?.known||0} 个词${remaining?`，还有 ${remaining} 个到期词`:'，下一次到期时会出现在首页'}。`:`${esc(state.vocabLevel)} · Unit ${state.vocabUnit} 已掌握。先做 5 题巩固，再开始下一组。`}</p><p class="completion-note">还不熟的词会保留到下一次复习，认识的词也会按日期再见面。</p><div class="completion-primary-actions">${!review?`<button class="btn primary" data-action="vocab-check">做 5 题巩固<i data-lucide="arrow-right"></i></button>${hasNext?'<button class="btn ghost" data-action="vocab-unit-next">下一单元</button>':''}`:remaining?'<button class="btn primary" data-action="start-vocab-review">继续复习</button>':''}</div><div class="completion-secondary-actions"><button class="text-link" data-action="go" data-view="home" data-motion="back">回到今天</button>${!review?'<button class="text-link" data-action="repeat-vocab">再练这一组</button>':''}</div></section>`;
+  }
+
+  function vocabMeaningParts(word) {
+    return String(word.zh || word.meaning || '').split(/[;；,，、\n]+/)
+      .map(text=>text.replace(/\[[^\]]*\]|【[^】]*】/g,'').replace(/^[a-z.]+\s+/i,'').trim())
+      .filter(Boolean);
+  }
+
+  function vocabMeaningKey(value) {
+    // Meaning choices contain Chinese text; the ASCII answer matcher would erase it.
+    return String(value || '').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+  }
+
+  function vocabQuizEntry(word) {
+    const parts=vocabMeaningParts(word);
+    // Select a complete short sense, never cut a phrase in the middle.
+    const label=parts.find(text=>text.length<=14)||'';
+    const explicit=String(word.pos||'').toLowerCase();
+    const english=String(word.en||'').match(/(?:^|\s)(n|v|a|s|r)\./);
+    const pos=/adv|\br\./.test(explicit)?'adv':/adj|\ba\./.test(explicit)?'adj':/\bv(?:t|i)?\b/.test(explicit)?'verb':/\bn\b/.test(explicit)?'noun'
+      : /地$/.test(label)?'adv':/的$/.test(label)?'adj':english?({n:'noun',v:'verb',a:'adj',s:'adj',r:'adv'}[english[1]]):'';
+    return {word,label,parts,pos};
+  }
+
+  function buildVocabCheckQuestions(pool, unit, level) {
+    const unitWords=pool.slice((unit-1)*20,unit*20).filter(word=>word&&String(word.w||'').trim());
+    if(!unitWords.length)return [];
+    const entries=pool.map(vocabQuizEntry);
+    let extraEntries;
+    const words=shuffle(unitWords).slice(0,5);
+    // A very short final unit still receives five questions from its own words.
+    while(words.length<5)words.push(unitWords[words.length%unitWords.length]);
+    return words.map(word=>{
+      const current=vocabQuizEntry(word),seen=new Set([vocabMeaningKey(current.label)]),candidates=[];
+      const addCandidates=list=>{
+        for(const item of list){
+          const key=vocabMeaningKey(item.label);
+          if(!item.label||normalize(item.word.w)===normalize(word.w)||seen.has(key))continue;
+          // Do not offer a second meaning that is already valid for the target word.
+          if(current.parts.some(part=>vocabMeaningKey(part)===key)||item.parts.some(part=>vocabMeaningKey(part)===vocabMeaningKey(current.label)))continue;
+          seen.add(key);candidates.push(item);
+        }
+      };
+      addCandidates(shuffle(entries));
+      if(candidates.length<3){
+        if(!extraEntries)extraEntries=Object.values(BANK.vocabLevels||{}).flat().map(vocabQuizEntry);
+        addCandidates(shuffle(extraEntries));
+      }
+      candidates.sort((a,b)=>{
+        const rank=item=>(current.pos&&item.pos!==current.pos?40:0)+Math.abs(item.label.length-current.label.length);
+        return rank(a)-rank(b);
+      });
+      let labels,answerLabel,text;
+      if(current.label&&candidates.length>=3){
+        labels=shuffle([current.label,...candidates.slice(0,3).map(item=>item.label)]);
+        answerLabel=current.label;text=`“${word.w}” 的常用意思是？`;
+      }else{
+        // Sparse or unusually long meanings use a reverse question, retaining its full sense.
+        const otherWords=[...new Map(entries.concat(extraEntries||[]).map(item=>String(item.word.w||'')).filter(value=>value&&normalize(value)!==normalize(word.w)).map(value=>[normalize(value),value])).values()];
+        labels=shuffle([word.w,...shuffle(otherWords).slice(0,3)]);
+        answerLabel=word.w;
+        text=`“${current.label||word.zh||word.meaning||word.en||word.w}” 对应哪个单词？`;
+      }
+      const answer=String.fromCharCode(65+labels.indexOf(answerLabel));
+      return {type:'multiple-choice',text,word:word.w,answer,options:labels.map((text,i)=>`${String.fromCharCode(65+i)}. ${text}`),explain:`${word.w}：${word.zh||word.meaning||word.en||''}${word.en?`。英文释义：${word.en}`:''}`,level};
+    });
+  }
+
+  function startVocabCheck() {
+    const questions=buildVocabCheckQuestions(getLevelVocab(state.vocabLevel),state.vocabUnit,state.vocabLevel);
+    if(!questions.length){toast('这一组暂无可用词汇，请选择其他单元');return;}
+    state.answerMap={};state.currentTest=null;
+    stopSessionTimer();
+    state.session={kind:'consolidation',type:'vocab',level:state.vocabLevel,unit:state.vocabUnit,questions,remaining:5*60,result:null,timerId:null};
+    delete state.progress.answers[`session:consolidation:vocab:${state.vocabLevel}`];
+    setView('session');startSessionTimer();
+  }
+
   function advanceVocab(known) {
-    const vocab = getLevelVocab(state.vocabLevel);
-    const idx = state.vocabDeck[state.vocabIndex];
-    const card = vocab[idx];
-    if (!card) return;
-    touchToday();
-    state.progress.vocab.seen += 1;
-    const key = `${state.vocabLevel}:${card.w}`;
-    const daily = ensureToday();
-    if (!daily.wordsSeen.includes(key)) {
-      daily.wordsSeen.push(key);
-      recordDailyWords(1);
+    const vocab=activeVocabWords(),idx=state.vocabDeck[state.vocabIndex],card=vocab[idx];
+    if(!card)return;
+    touchToday();state.progress.vocab.seen+=1;
+    const key=card.studyKey||`${state.vocabLevel}:${card.w}`,daily=ensureToday();
+    if(!daily.wordsSeen.includes(key)){daily.wordsSeen.push(key);recordDailyWords(1);addXp(known?10:2);}
+    scheduleVocab(key,known);
+    if(known){state.vocabDeck.splice(state.vocabIndex,1);state.vocabSession.known+=1;}
+    else {const [item]=state.vocabDeck.splice(state.vocabIndex,1);state.vocabDeck.push(item);if(!state.vocabSession.again.includes(key))state.vocabSession.again.push(key);}
+    state.vocabIndex=0;
+    if(!state.vocabReview){
+      const words=vocab.slice((state.vocabUnit-1)*20,state.vocabUnit*20);
+      if(words.length&&words.every(item=>state.progress.vocab.known.includes(`${state.vocabLevel}:${item.w}`))){
+        state.progress.vocabUnits[state.vocabLevel]=Math.max(state.progress.vocabUnits[state.vocabLevel]||0,state.vocabUnit);
+        if(!state.vocabDeck.length)playEncouragement();
+      }
     }
-    addXp(known ? 10 : 2);
-    if (known && !state.progress.vocab.known.includes(key)) {
-      state.progress.vocab.known.push(key);
-    }
-    const unitStart = (state.vocabUnit - 1) * 20;
-    const unitWords = vocab.slice(unitStart, unitStart + 20);
-    const unitComplete = unitWords.length > 0 && unitWords.every((item) => state.progress.vocab.known.includes(`${state.vocabLevel}:${item.w}`));
-    const completedUnit = state.progress.vocabUnits[state.vocabLevel] || 0;
-    if (unitComplete && completedUnit < state.vocabUnit) {
-      state.progress.vocabUnits[state.vocabLevel] = state.vocabUnit;
-      playEncouragement();
-      toast(`Unit ${state.vocabUnit} 完成，继续保持！`);
-    }
-    if (!known) {
-      const [item] = state.vocabDeck.splice(state.vocabIndex, 1);
-      state.vocabDeck.push(item);
-    } else {
-      state.vocabIndex = (state.vocabIndex + 1) % state.vocabDeck.length;
-    }
-    save();
-    render();
+    save();render();
+    if(!state.vocabDeck.length){const heading=$('.vocab-complete h2');heading?.setAttribute('tabindex','-1');heading?.focus({preventScroll:true});}
   }
 
   function startSpeakingTimer(el) {
@@ -3604,7 +3904,7 @@
     $("#view-root").addEventListener("touchstart", prefetchFromEvent, { passive: true });
     $("#view-root").addEventListener("input", (e) => {
       if (e.target.matches("[data-writing-id]")) updateWordCount();
-      if (e.target.matches("[data-qpath]")) updateLiveScore();
+      if (e.target.matches("[data-qpath]")) {updateLiveScore();saveAnswerDraft();}
     });
     $("#view-root").addEventListener("keydown", (e) => {
       if (e.target.id === "ai-input" && e.key === "Enter") {
@@ -3669,6 +3969,9 @@
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") hideWordPopover();
     });
+    window.addEventListener('popstate',()=>{if(location.hash!==lastRoute)applyRoute();});
+    window.addEventListener('hashchange',()=>{if(location.hash!==lastRoute)applyRoute();});
+    window.addEventListener('pagehide',()=>{saveAnswerDraft();persistSession();save();});
     window.addEventListener("scroll", () => {
       const pop = $("#word-popover");
       if (pop && !pop.hidden && currentPopoverAnchor) positionWordPopover(currentPopoverAnchor);
@@ -3687,7 +3990,7 @@
       if (state.view === "ai" && btn.dataset.view !== "ai") stopAiListening(true);
       setView(btn.dataset.view);
     });
-    $(".source-link").addEventListener("click", () => setView("about"));
+    $('.source-link[data-view="about"]').addEventListener("click", () => setView("about"));
     if ($("#scrim")) $("#scrim").addEventListener("click", () => {
       $("body").classList.remove("sidebar-open");
     });
@@ -3737,12 +4040,15 @@
     const lookupBtn = $("#lookup-toggle");
     if (lookupBtn) lookupBtn.classList.toggle("is-active", state.lookupEnabled);
     if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
-      navigator.serviceWorker.register("sw.js").catch(() => {});
+      navigator.serviceWorker.register("sw.js").catch(() => window.IELTSOffline?.registrationFailed());
     }
     renderTarget();
-    render();
-    if (window.IELTS_FIRST_VISIT) window.addEventListener("ielts:welcome-complete", showUpdateAnnouncement, {once:true});
-    else showUpdateAnnouncement();
+    state.vocabLevel=state.progress.resume?.level||state.progress.studyPlan.level;
+    state.vocabUnit=state.progress.resume?.unit||1;
+    applyRoute();
+    if (window.IELTS_FIRST_VISIT) {
+      localStorage.setItem(ANNOUNCEMENT_STORAGE_KEY, currentWebVersion());
+    } else showUpdateAnnouncement();
   }
 
   init();
